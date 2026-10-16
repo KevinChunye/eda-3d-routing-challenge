@@ -139,6 +139,9 @@ class Router {
     gneg_hist_ = opt.get("gneg_hist", 0.5);
     // after the first round, reroute only group nets that touch an overused point
     gneg_sel_ = static_cast<int>(opt.get_int("gneg_sel", 0));
+    // B2: a net with k sinks sees congestion costs scaled by k^-fan_alpha in negotiation, so
+    // big nets (one trunk serving many sinks) keep the cheap layers and small nets yield.
+    fan_alpha_ = opt.get("fan_alpha", 0.0);
     verbose_ = opt.get_int("verbose", 0);
 
     X.resize(N); Y.resize(N); Z.resize(N);
@@ -166,6 +169,8 @@ class Router {
     dly.assign(N, 0);
     buckets.resize(maxc + 1);
     tv.resize(nn); tp.resize(nn);
+    netw_.resize(nn);
+    for (int n = 0; n < nn; ++n) netw_[n] = std::pow(static_cast<double>(in.sinks[n].size()), -fan_alpha_);
     delay.assign(nn, 0);
   }
 
@@ -478,6 +483,8 @@ class Router {
   int lns_, lns_k_, lns_order_;
   double sa_t0_, sa_t1_;
   int gneg_, lns_win_, gneg_sel_;
+  double fan_alpha_;
+  std::vector<double> netw_;
   std::vector<char> gaff_;
   int wx0_ = 0, wx1_ = 1 << 30, wy0_ = 0, wy1_ = 1 << 30;  // search window (inclusive)
   double gneg_pf0_, gneg_mult_, gneg_hist_;
@@ -591,6 +598,8 @@ class Router {
       if (target[s] != stamp_) { target[s] = stamp_; ++remaining; }
     int d = in_.drv[n];
     auto cmp = [](const std::pair<double, int>& a, const std::pair<double, int>& b) { return a.first > b.first; };
+    const double w = netw_[n];
+    const double wpf = w * pf;
     heap_.clear();
     fdist[d] = 0; seen[d] = stamp_; pred[d] = -1;
     heap_.push_back({0.0, d});
@@ -605,7 +614,8 @@ class Router {
         int pn = Group ? owner[u] : pin_net[u];
         if (pn >= 0 && pn != n) return;
         if (X[u] < wx0_ || X[u] > wx1_ || Y[u] < wy0_ || Y[u] > wy1_) return;
-        double nd = dv + (c + hist[u]) * (1.0 + pf * occ[u]);
+        double nd = fan_alpha_ == 0.0 ? dv + (c + hist[u]) * (1.0 + pf * occ[u])
+                                      : dv + (c + w * hist[u]) * (1.0 + wpf * occ[u]);
         if (seen[u] != stamp_ || nd < fdist[u]) {
           seen[u] = stamp_;
           fdist[u] = nd;
