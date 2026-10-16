@@ -123,6 +123,17 @@ class Router {
     lns_ = static_cast<int>(opt.get_int("lns", 0));
     lns_k_ = static_cast<int>(opt.get_int("lns_k", 4));
     lns_order_ = static_cast<int>(opt.get_int("lns_order", 1));
+    // B6: annealed acceptance in the LNS; temperature falls geometrically from sa_t0 to
+    // sa_t1 over the LNS phase. sa_t0 = 0 keeps accept-if-not-worse.
+    sa_t0_ = opt.get("sa_t0", 0.0);
+    sa_t1_ = opt.get("sa_t1", 0.05);
+    // B8: negotiated group repair. Up to gneg rounds of PathFinder among the ripped group
+    // (everything else fixed); if the group ends overlap-free, polish each net with an exact
+    // reroute; otherwise fall back to sequential exact routing.
+    gneg_ = static_cast<int>(opt.get_int("gneg", 0));
+    gneg_pf0_ = opt.get("gneg_pf0", 0.5);
+    gneg_mult_ = opt.get("gneg_mult", 2.0);
+    gneg_hist_ = opt.get("gneg_hist", 0.5);
     verbose_ = opt.get_int("verbose", 0);
 
     X.resize(N); Y.resize(N); Z.resize(N);
@@ -249,13 +260,31 @@ class Router {
       route_exact<true>(n);
       ideal_d[n] = build_tree_into(n, ideal_v[n], tmpP);
     }
+    std::fill(occ.begin(), occ.end(), 0);
+    std::fill(hist.begin(), hist.end(), 0.0);
     std::vector<uint32_t> net_mark(nn, 0);
     uint32_t epoch = 0;
     std::vector<int> group, cand;
     std::vector<std::vector<int>> old_v(lns_k_), old_p(lns_k_);
     std::vector<long long> old_d(lns_k_);
     std::vector<double> cum(nn);
-    while (Clock::now() < deadline_ && !(max_moves_ >= 0 && moves_ >= max_moves_)) {
+    // best solution seen (annealing may leave it)
+    long long best_total = total_;
+    std::vector<std::vector<int>> best_v, best_p;
+    std::vector<long long> best_d;
+    bool have_best = false;
+    if (sa_t0_ > 0) { best_v = tv; best_p = tp; best_d = delay; have_best = true; }
+    auto lns_start = Clock::now();
+    double lns_span = std::max(1e-3, std::chrono::duration<double>(deadline_ - lns_start).count());
+    double temp = sa_t0_;
+    std::uniform_real_distribution<double> unif(0.0, 1.0);
+    while (true) {
+      auto now = Clock::now();
+      if (now >= deadline_ || (max_moves_ >= 0 && moves_ >= max_moves_)) break;
+      if (sa_t0_ > 0 && (moves_ & 63) == 0) {
+        double frac = std::chrono::duration<double>(now - lns_start).count() / lns_span;
+        temp = sa_t0_ * std::pow(sa_t1_ / sa_t0_, std::min(1.0, frac));
+      }
       double acc = 0;
       for (int n = 0; n < nn; ++n) {
         acc += static_cast<double>(delay[n] - ideal_d[n]);
@@ -287,16 +316,33 @@ class Router {
       }
       long long new_sum = 0;
       size_t routed = 0;
-      for (; routed < group.size(); ++routed) {
-        int n = group[routed];
-        if (!route_exact(n)) break;
-        place(n);
-        new_sum += delay[n];
+      if (gneg_ > 0 && group_negotiate(group)) {
+        for (int n : group) place(n);
+        for (int n : group) {
+          rip(n);
+          route_exact(n);  // cannot fail: the negotiated tree is still available
+          place(n);
+          new_sum += delay[n];
+        }
+        routed = group.size();
+      } else {
+        for (; routed < group.size(); ++routed) {
+          int n = group[routed];
+          if (!route_exact(n)) break;
+          place(n);
+          new_sum += delay[n];
+        }
       }
       ++moves_;
-      if (routed == group.size() && new_sum <= old_sum) {
+      if (routed == group.size() &&
+          (new_sum <= old_sum || (sa_t0_ > 0 && unif(rng_) < std::exp(-(new_sum - old_sum) / temp)))) {
         total_ += new_sum - old_sum;
         ++lns_accepted_;
+        if (sa_t0_ > 0 && total_ < best_total) {
+          best_total = total_;
+          best_v = tv; best_p = tp; best_d = delay;
+          have_best = true;
+        }
         continue;
       }
       for (size_t i = 0; i < routed; ++i) rip(group[i]);
@@ -306,7 +352,47 @@ class Router {
         place(n);
       }
     }
+    if (sa_t0_ > 0 && total_ > best_total && have_best) {
+      for (int n = 0; n < nn; ++n) rip(n);
+      tv = best_v; tp = best_p; delay = best_d;
+      for (int n = 0; n < nn; ++n) place(n);
+      total_ = best_total;
+    }
     if (verbose_) std::cerr << "lns moves " << moves_ << " accepted " << lns_accepted_ << " total " << total_ << "\n";
+  }
+
+  // PathFinder among the (ripped) group with every other net fixed. Returns true if the
+  // group's trees end pairwise disjoint (trees left in tv/tp, not placed). occ and hist are
+  // back to zero on return.
+  bool group_negotiate(const std::vector<int>& group) {
+    double pf = gneg_pf0_;
+    bool ok = true, legal = false;
+    for (int round = 0; round < gneg_ && ok; ++round) {
+      for (int n : group) {
+        if (round > 0) sub_occ(n);
+        if (!route_neg<true>(n, pf)) { ok = false; break; }
+        add_occ(n);
+      }
+      if (!ok) break;
+      bool over = false;
+      for (int n : group)
+        for (int v : tv[n])
+          if (occ[v] > 1) {
+            over = true;
+            if (hist[v] == 0.0) touched_.push_back(v);
+            hist[v] += gneg_hist_;
+          }
+      if (!over) { legal = true; break; }
+      pf *= gneg_mult_;
+    }
+    if (ok) {
+      for (int n : group) sub_occ(n);
+    } else {
+      std::fill(occ.begin(), occ.end(), 0);  // rare: cannot happen while old trees are free
+    }
+    for (int v : touched_) hist[v] = 0.0;
+    touched_.clear();
+    return ok && legal;
   }
 
   long long total() const { return total_; }
@@ -368,6 +454,10 @@ class Router {
   // parameters and counters
   double pf0_, pf_mult_, hist_fac_, esc1_, esc2_;
   int lns_, lns_k_, lns_order_;
+  double sa_t0_, sa_t1_;
+  int gneg_;
+  double gneg_pf0_, gneg_mult_, gneg_hist_;
+  std::vector<int> touched_;
   long long lns_accepted_ = 0;
   // congestion-free tree per net (only other nets' pins blocked) and its delay
   std::vector<std::vector<int>> ideal_v;
@@ -468,6 +558,7 @@ class Router {
 
   // Negotiated-cost shortest-path tree for net n: other nets' pins are forbidden; a step
   // into v costs (delay + hist[v]) * (1 + pf * occ[v]).
+  template <bool Group = false>
   bool route_neg(int n, double pf) {
     ++stamp_;
     int remaining = 0;
@@ -486,7 +577,7 @@ class Router {
       done[v] = stamp_;
       if (target[v] == stamp_ && --remaining == 0) break;
       for_nb(v, [&](int u, int c) {
-        int pn = pin_net[u];
+        int pn = Group ? owner[u] : pin_net[u];
         if (pn >= 0 && pn != n) return;
         double nd = dv + (c + hist[u]) * (1.0 + pf * occ[u]);
         if (seen[u] != stamp_ || nd < fdist[u]) {
