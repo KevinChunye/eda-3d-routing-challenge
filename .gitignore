@@ -16,3 +16,7 @@ __pycache__/
 build/
 dist/
 *.egg-info/
+
+# research outputs (route files are large; numbers live in research/state/)
+research/runs/
+router/build/
