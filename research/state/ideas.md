@@ -78,7 +78,7 @@ Expected effects for router ideas are on the hard-tier dev aggregate (baseline =
   - Mechanism: (a) after round 1 reroute only group nets touching an overused point
     (`gneg_sel`, implemented, off); (b) integer costs + bucket queue for the negotiated search.
   - Expect: 2× moves/s, +0.5–1% mean r. Cost: S (a), M (b). Falsify: < 1.5× moves/s.
-- **E3 · Faster legality on large grids** — status: open — priority: medium
+- **E3 · Faster legality on large grids** — status: open — priority: high (exp-006: legality takes 40–121 s of 300 on congested, 1693 s of 1800 on stress; stress overshot its limit by 49 s)
   - Evidence: congested/designs at 30 s spend 12–13 s (40%) reaching legality; escalation
     fires at 35% of budget.
   - Mechanism: start present-cost growth faster on large grids by a size-free rule (e.g.

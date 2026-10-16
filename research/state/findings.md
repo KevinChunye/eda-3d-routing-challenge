@@ -119,3 +119,18 @@ converges, so most of the budget is unused.
 - **Next three.** E1 adaptive neighborhood portfolio (attacks saturation directly), E2
   cheaper group negotiation (B8's 15× move-rate loss), B5 compact big-net trees (evidence:
   big nets near ideal, single-sink nets far from it).
+
+## 2026-10-16 — readiness check at submission limits (exp-006, exp-005 flags, seed 1)
+
+- Legal 45/45. Aggregates: intro 1.126, hard 1.315 (60 s), scale 1.093, stress 1.039,
+  congested 1.239 (300 s), designs 1.365 (300 s).
+- **Time to legality dominates large grids.** Negotiation (present-cost growth ×1.03, escalating
+  at 35%/60% of budget) reaches legality in 2–10 s on hard, but 40–121 s of 300 on congested,
+  54–106 s on designs and 1693 s of 1800 on stress (9 rounds of full-grid heap searches on a
+  530×530×6 grid). Stress overshot its limit by 49 s: the congestion-free tree pass and LNS
+  moves do not check the deadline on huge grids. Fix before submitting stress.
+- **Sparse tiers are not solved by this router.** Intro is 8.1% over the bound (public 3.0%),
+  scale 6.4% (public 1.9%), stress 6.3% (public 0.6%); small intro cases are within 1.5% of
+  public, big ones (case_13–20) 3–8% worse. Same cause: little time left for LNS after
+  negotiation on big grids, and every LNS search spans the whole grid. E2/E3 (and A* for
+  sparse nets) are the levers there.
