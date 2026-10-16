@@ -4,14 +4,13 @@ Read this first in every session; update it last. Keep it short: it is the hando
 between sessions on possibly different machines.
 
 ## Next action
-1. Kevin: decide on the submission (see "Submitted" and pr_draft_20261016.md): allow the
-   submission-branch push, or re-run 40_submit yourself.
+1. Kevin: open the PR from `submit_jiangbanya_20261016` (link in pr_draft_20261016.md).
 2. Then `research/prompts/10_iterate.md`. Top ideas: E3 faster legality on large grids
    (also fixes the 49 s stress overshoot, log it as its own experiment), E2 cheaper group
    negotiation, B5 compact big-net trees.
 
 ## Entry config (used by 40_submit; Kevin may edit)
-- entry_name: `kevin_toll_lns` (one directory per distinct method; rename if the method changes)
+- entry_name: `Jiangbanya` (renamed from kevin_toll_lns by Kevin 2026-10-16; one directory per distinct method)
 - author: `Kevin Wang (KevinChunye)`
 - code_url: `https://github.com/KevinChunye/eda-3d-routing-challenge/tree/m3d_research/router`
   (40_submit pins it to the frozen commit)
@@ -38,12 +37,13 @@ between sessions on possibly different machines.
 - 2026-10-16 · claude-code cloud VM · Intel Xeon @ 2.10GHz · 4 logical CPUs · 15 GB RAM · dial_bench 40×40×6: 138 µs, 105×105×6: 600 µs
 
 ## Submitted
-- 2026-10-16 · packaged, checked, NOT pushed (session lacked permission to commit/push
-  the submission branch) · tiers hard 1.3303 (531 s), congested 1.2367 (1196 s), designs
-  1.3685 (897 s), all legal · branch name `submit_kevin_toll_lns_20261016` · router SHA
-  8dc5c19 · details and recreate commands: `research/state/pr_draft_20261016.md`
+- 2026-10-16 · entry `Jiangbanya` · branch `submit_jiangbanya_20261016` pushed to the fork,
+  PR not yet opened (Kevin opens it) · hard 1.3303 (531 s), congested 1.2367 (1,196 s),
+  designs 1.3685 (897 s), all legal · router SHA 8dc5c19, flags
+  `--set lns=1 --set gneg=6 --set lns_k=6 --set fan_alpha=0.3 --set lns_mix=1`, seed 1,
+  1 thread · `research/state/pr_draft_20261016.md`
 
 ## Open questions for Kevin
-- Submission: OK to push `submit_kevin_toll_lns_20261016` to the fork (and tag
-  `entry-kevin_toll_lns-20261016`, whose push the git proxy refused)? This session could not.
+- The tag `entry-kevin_toll_lns-20261016` could not be pushed (git proxy refused tags);
+  meta.json pins the commit, so it is optional.
 - Fork is public: research commits are visible. Move router work to a private repo?
