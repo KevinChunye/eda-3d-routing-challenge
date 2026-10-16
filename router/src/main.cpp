@@ -142,6 +142,13 @@ class Router {
     // B2: a net with k sinks sees congestion costs scaled by k^-fan_alpha in negotiation, so
     // big nets (one trunk serving many sinks) keep the cheap layers and small nets yield.
     fan_alpha_ = opt.get("fan_alpha", 0.0);
+    // E1: neighborhood portfolio. 0 = ideal-tree blockers only (B1); 1 = roulette between B1
+    // and a window neighborhood (target net + nets with points in a box of half-size lns_wr
+    // around a random point of the target's congestion-free tree). Weights track delay
+    // gained per microsecond with reaction rate lns_gamma.
+    lns_mix_ = static_cast<int>(opt.get_int("lns_mix", 0));
+    lns_wr_ = static_cast<int>(opt.get_int("lns_wr", 3));
+    lns_gamma_ = opt.get("lns_gamma", 0.01);
     verbose_ = opt.get_int("verbose", 0);
 
     X.resize(N); Y.resize(N); Z.resize(N);
@@ -288,6 +295,8 @@ class Router {
     double lns_span = std::max(1e-3, std::chrono::duration<double>(deadline_ - lns_start).count());
     double temp = sa_t0_;
     std::uniform_real_distribution<double> unif(0.0, 1.0);
+    double hw[2] = {1e-2, 1e-2};
+    long long hcount[2] = {0, 0};
     while (true) {
       auto now = Clock::now();
       if (now >= deadline_ || (max_moves_ >= 0 && moves_ >= max_moves_)) break;
@@ -307,9 +316,23 @@ class Router {
       ++epoch;
       net_mark[t] = epoch;
       cand.clear();
-      for (int v : ideal_v[t]) {
-        int o = owner[v];
-        if (o >= 0 && net_mark[o] != epoch) { net_mark[o] = epoch; cand.push_back(o); }
+      int heur = 0;
+      if (lns_mix_) heur = unif(rng_) * (hw[0] + hw[1]) < hw[0] ? 0 : 1;
+      auto move_t0 = Clock::now();
+      if (heur == 0) {
+        for (int v : ideal_v[t]) {
+          int o = owner[v];
+          if (o >= 0 && net_mark[o] != epoch) { net_mark[o] = epoch; cand.push_back(o); }
+        }
+      } else {
+        int c = ideal_v[t][std::uniform_int_distribution<size_t>(0, ideal_v[t].size() - 1)(rng_)];
+        int cx = X[c], cy = Y[c];
+        for (int z = 0; z < L; ++z)
+          for (int y = std::max(0, cy - lns_wr_); y <= std::min(H - 1, cy + lns_wr_); ++y)
+            for (int x = std::max(0, cx - lns_wr_); x <= std::min(W - 1, cx + lns_wr_); ++x) {
+              int o = owner[(z * H + y) * W + x];
+              if (o >= 0 && net_mark[o] != epoch) { net_mark[o] = epoch; cand.push_back(o); }
+            }
       }
       std::shuffle(cand.begin(), cand.end(), rng_);
       if (static_cast<int>(cand.size()) > lns_k_ - 1) cand.resize(lns_k_ - 1);
@@ -355,6 +378,12 @@ class Router {
       }
       ++moves_;
       wx0_ = 0; wx1_ = 1 << 30; wy0_ = 0; wy1_ = 1 << 30;
+      if (lns_mix_) {
+        double us = std::max(1.0, std::chrono::duration<double, std::micro>(Clock::now() - move_t0).count());
+        double gain = routed == group.size() && new_sum < old_sum ? static_cast<double>(old_sum - new_sum) : 0.0;
+        hw[heur] = std::max(1e-4, (1 - lns_gamma_) * hw[heur] + lns_gamma_ * gain / us);
+        ++hcount[heur];
+      }
       if (routed == group.size() &&
           (new_sum <= old_sum || (sa_t0_ > 0 && unif(rng_) < std::exp(-(new_sum - old_sum) / temp)))) {
         total_ += new_sum - old_sum;
@@ -379,7 +408,9 @@ class Router {
       for (int n = 0; n < nn; ++n) place(n);
       total_ = best_total;
     }
-    if (verbose_) std::cerr << "lns moves " << moves_ << " accepted " << lns_accepted_ << " total " << total_ << "\n";
+    if (verbose_)
+      std::cerr << "lns moves " << moves_ << " accepted " << lns_accepted_ << " total " << total_ << " heur "
+                << hcount[0] << "/" << hcount[1] << " w " << hw[0] << "/" << hw[1] << "\n";
   }
 
   // PathFinder among the (ripped) group with every other net fixed. Returns true if the
@@ -484,6 +515,8 @@ class Router {
   double sa_t0_, sa_t1_;
   int gneg_, lns_win_, gneg_sel_;
   double fan_alpha_;
+  int lns_mix_, lns_wr_;
+  double lns_gamma_;
   std::vector<double> netw_;
   std::vector<char> gaff_;
   int wx0_ = 0, wx1_ = 1 << 30, wy0_ = 0, wy1_ = 1 << 30;  // search window (inclusive)
