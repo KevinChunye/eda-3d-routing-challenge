@@ -28,7 +28,7 @@ Expected effects for router ideas are on the hard-tier dev aggregate (baseline =
     middle-layer points its ideal path needs; reroute the group in random orders (with
     negotiation inside the group); accept if total delay does not increase.
   - Expect: +15–20% over A2 at 60 s/case. Cost: M. Falsify: < +5% vs random neighborhoods.
-- **B2 · Fanout-weighted congestion prices** — status: open — priority: high
+- **B2 · Fanout-weighted congestion prices** — status: adopted (exp-005, alpha 0.3, mean r +1.37%)
   - Evidence: single-sink nets run 66% over ideal on hard; a trunk serves k sinks.
   - Mechanism: scale a net's congestion cost by 1/k (k = its sink count) during negotiation,
     so big nets keep the middle layers and small nets yield first. Sweep the exponent.
@@ -64,7 +64,7 @@ Expected effects for router ideas are on the hard-tier dev aggregate (baseline =
 
 ## Phase C — speed (multiplies Phase B)
 
-- **C1 · Bucket queue + A*** — status: open — priority: high once B1 exists
+- **C1 · Bucket queue + A*** — status: window part inconclusive (exp-004, lns_win=3, mean r +0.43%, 7/11; moves/s barely changed). Exact searches already use a bucket queue; open: A*/bucket queue for the negotiated (heap) search
   - Evidence: bucket queue alone ~100× over Python (dial_bench). Each sink's congestion-free
     cost never overestimates, so it is a valid A* heuristic.
   - Mechanism: integer costs (scale fractional congestion costs), A* toward the next sink,
