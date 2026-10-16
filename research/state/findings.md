@@ -150,3 +150,27 @@ aggregates reproduce LEADERBOARD.md exactly.
 - Router flag `snap_dir` (diagnostics, off by default; routes byte-identical with it off)
   plus `animate_run.py` render one run as a GIF; hard case_01 turns legal at 1.7 s (9,872)
   and reaches 8,908 by 59 s.
+
+## 2026-10-16 — ideas 1–5 measured (exp-008..012; 30 s, seeds 1–3, vs exp-007)
+
+Diagnostics that motivated them (hard, vs leonid-popryho's routes): we carry 9,334 more
+delay; 80% of it in nets with 2+ sinks, 83% on same-die sinks; ~45% of our multi-sink trees
+are both slower and larger than leonid's; we use 4.8% more grid points (17.7 vs 16.9 per
+sink). 60 s → 300 s gives only 1.0–1.7% on hard case_01/05/09.
+
+| idea | predicted | actual mean r | cases better | decision |
+|---|---:|---:|---:|---|
+| 1 sink-by-sink negotiated trees (`tree_seq=2`) | +2–3% | −0.12% | 6/11 | reject |
+| 2 space-saving ties (`tie_share=1`) | +1–2% | +0.03% | 5/11 | inconclusive |
+| 3 threshold + kick + return to best | ~0 at 30 s, +1–2% at 300 s | +0.36% (+0.75% at 300 s, 3 cases) | 10/11 | adopt |
+| 4 `gneg_sel` + A* single-sink | +0.5–1% | +0.36% | 6/11 | inconclusive |
+| 5 4 threads, sync every 2 s | +1–1.5% | +0.82% | 11/11 | adopt |
+
+- Ideas 1 and 2 missed by far. Both target tree shape, and neither changes which nets get
+  the middle layers; the LNS acceptance already sees true delay. The per-net diagnostics
+  (bigger and slower trees) are a symptom of allocation, not of tree construction.
+- Idea 1 everywhere cut group-move throughput 2.5× (k searches per net, each seeded with the
+  whole tree) and lost 1.7% on hard (seed 1).
+- Idea 4 is a large-grid win (congested +1.8%, designs +2.1%) and mixed on hard; worth a
+  tier-aware retest.
+- Ideas 3, 4 and 5 are independent; their combination is untested.
