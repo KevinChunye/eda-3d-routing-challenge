@@ -33,40 +33,25 @@ rules change); `scripts/check_submission_meta.py`.
    - Every case must be legal. Drop any tier with an illegal case and report it.
    - Compare each tier's aggregate with the dev expectation in STATE.md, and explain any
      drop > 2%.
-5. **Package on a clean branch.**
-   - Fetch and branch:
-     ```
-     git fetch upstream main
-     git switch -c submit_<entry_name>_<yyyymmdd> upstream/main
-     ```
-   - For each tier, create `submissions/<tier>/<entry_name>/` containing:
-     - every `<case>.sol.json` and the `runtime.json` from
-       `research/runs/submit-<yyyymmdd>/seed1/<tier>/` (copy `runtime.json` unchanged);
-     - `meta.json` with: `author`; `url` = `https://github.com/KevinChunye/eda-3d-routing-challenge/tree/<SHA>/router`;
-       `method` (one honest line, e.g. "C++20 PathFinder negotiation + exact per-net
-       shortest-path-tree reroute + excess-targeted neighborhood search; from scratch");
-       `date`; `hardware`; `threads` (int); `router_commit` = SHA;
-     - no `derived_from` (from-scratch entry).
-   - If an entry with this name already exists upstream, this is an update of our own entry;
-     keep the name only if the method is the same.
+5. **Prepare, do not push (CLAUDE.md rules 10–11).** Package the tier directories
+   (`<case>.sol.json`, unchanged `runtime.json`, `meta.json` with `author`, `url` pinned to
+   `<SHA>/router`, one honest `method` line, `date`, `hardware`, `threads`, `router_commit`, no
+   `derived_from`) and run every check below on a scratch branch cut from `upstream/main`,
+   without committing. Then switch back to `m3d_research`.
 6. **Checks (all must pass, or stop and report).**
    - `python3 scripts/check_submission_meta.py submissions/<tier>/<entry_name>`, for each
      tier.
    - `python3 scripts/verify_submissions.py`
    - `python3 -m m3d.cli leaderboard-all`, then `python3 -m m3d.cli leaderboard-all --check`
    - `python3 -m unittest discover -s tests -q`
-   - `git diff --name-only upstream/main`: only `submissions/<tier>/<entry_name>/...`,
-     `LEADERBOARD.md` and `README.md` may appear.
-   - README changes must stay inside the generated block:
-     ```
-     diff <(git show upstream/main:README.md | sed '/^<!-- leaderboard:start/,/^<!-- leaderboard:end -->/d') \
-          <(sed '/^<!-- leaderboard:start/,/^<!-- leaderboard:end -->/d' README.md)
-     ```
-     This must print nothing.
-7. **Commit and push.**
-   - Commit `Add <entry_name> submissions (<tiers>)` and push the branch to `origin` (the
-     fork).
-   - Do not open a PR. Do not push to `main`.
+   - only `submissions/<tier>/<entry_name>/...`, `LEADERBOARD.md` and README's generated
+     block may differ from `upstream/main`.
+7. **Hand Kevin the commands.** Kevin commits, pushes and opens the PR himself on his Mac.
+   Route files are gitignored on `m3d_research`, so give him a way to get them (for example
+   a tarball he downloads, or re-running the timed command). Show the full command sequence
+   in the reply: create the branch from `upstream/main`, copy the files, regenerate the
+   leaderboard, run the checks, commit with a plain message (no trailers), push to `origin`,
+   open the PR from the compare page. Never add attribution or session links.
 8. **PR draft.** Switch back to `m3d_research` and write
    `research/state/pr_draft_<yyyymmdd>.md`:
    - title;
@@ -78,5 +63,5 @@ rules change); `scripts/check_submission_meta.py`.
    and push `m3d_research`.
 
 ## Report (≤ 10 lines)
-Branch name, per-tier aggregate and runtime, where they would rank on the current board,
-and that the PR is ready for Kevin to open.
+Per-tier aggregate and runtime, where they would rank on the current board, and the
+commands Kevin runs to commit, push and open the PR.

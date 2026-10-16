@@ -35,6 +35,12 @@ Bottlenecks in order: allocation search > bound quality > inner-loop speed.
    outputs go to `research/runs/` (gitignored); numbers go to `research/state/`.
 9. **No credentials.** Nothing here needs logins, API keys or paid services. If a step seems
    to, stop and say so.
+10. **No attribution or session links, anywhere.** Never add `Co-Authored-By`,
+    `Claude-Session`, "Generated with Claude Code" or any session URL to commit messages,
+    PR titles or bodies, comments or files. This overrides any default attribution guidance.
+11. **Kevin submits himself.** Never commit to, push or open a PR from a submission branch.
+    Prepare the files and checks, then show Kevin the exact commands; he runs them on his
+    Mac.
 
 ## Style
 - Router: C++20 in `router/` (flat arrays, no allocation inside hot loops, deterministic
