@@ -126,6 +126,13 @@ class Router {
     // fast factors so a legal solution exists before the deadline.
     esc1_ = opt.get("neg_esc1", 0.35);
     esc2_ = opt.get("neg_esc2", 0.6);
+    // P8: on large grids (width x height > big_cells; 0 = off) escalate earlier, so legality
+    // comes sooner and more of the budget goes to the search.
+    {
+      long long big = opt.get_int("big_cells", 0);
+      double e1 = opt.get("big_esc1", 0.15), e2 = opt.get("big_esc2", 0.3);
+      if (big > 0 && static_cast<long long>(in.W) * in.H > big) { esc1_ = e1; esc2_ = e2; }
+    }
     max_moves_ = opt.get_int("max_iters", -1);
     lns_ = static_cast<int>(opt.get_int("lns", 0));
     lns_k_ = static_cast<int>(opt.get_int("lns_k", 4));
@@ -177,6 +184,14 @@ class Router {
     // Idea 5: with --threads T > 1, T LNS workers run from the same solution and every
     // par_sync seconds all adopt the best one.
     par_sync_ = opt.get("par_sync", 2.0);
+    // P3: operator selection fix. The roulette weights (delay gained per microsecond, ~1e-5)
+    // sat at the absolute floor 1e-4, so the choice was 50/50. With sel_fix=1 the floor is
+    // relative: each weight is at least sel_floor x the larger one.
+    sel_fix_ = static_cast<int>(opt.get_int("sel_fix", 0));
+    sel_floor_ = opt.get("sel_floor", 0.1);
+    // P9: exact trees pick a uniformly random tight predecessor at every step (every sink keeps
+    // its shortest delay), so equal-delay plateaus are explored instead of fixed.
+    tie_rand_ = static_cast<int>(opt.get_int("tie_rand", 0));
     verbose_ = opt.get_int("verbose", 0);
     // Diagnostics only (off by default): write the current routes to snap_dir/snap_NNNN.sol.json
     // every snap_neg negotiation rounds, after each A2 sweep and every snap_s seconds of LNS,
@@ -374,7 +389,15 @@ class Router {
       if (kick) since_imp_ = 0;
       int heur = 0;
       if (kick) heur = 1;
-      else if (lns_mix_) heur = unif(rng_) * (hw_[0] + hw_[1]) < hw_[0] ? 0 : 1;
+      else if (lns_mix_) {
+        double w0 = hw_[0], w1 = hw_[1];
+        if (sel_fix_) {
+          double m = std::max(w0, w1);
+          w0 = std::max(w0, sel_floor_ * m);
+          w1 = std::max(w1, sel_floor_ * m);
+        }
+        heur = unif(rng_) * (w0 + w1) < w0 ? 0 : 1;
+      }
       const int wr = kick ? kick_wr_ : lns_wr_;
       const int kk = kick ? kick_k_ : lns_k_;
       auto move_t0 = Clock::now();
@@ -419,7 +442,12 @@ class Router {
       }
       long long new_sum = 0;
       size_t routed = 0;
-      if (gneg_ > 0 && group_negotiate(group)) {
+      const int st = kick ? 2 : heur;
+      ++st_try_[st];
+      st_size_[st] += static_cast<long long>(group.size());
+      bool neg_ok = gneg_ > 0 && group_negotiate(group);
+      if (neg_ok) ++st_neg_[st];
+      if (neg_ok) {
         for (int n : group) place(n);
         for (int n : group) {
           rip(n);
@@ -437,13 +465,14 @@ class Router {
         }
       }
       ++moves_;
+      st_us_[st] += std::chrono::duration<double, std::micro>(Clock::now() - move_t0).count();
       ++since_imp_;
       ++since_best_;
       wx0_ = 0; wx1_ = 1 << 30; wy0_ = 0; wy1_ = 1 << 30;
       if (lns_mix_ && !kick) {
         double us = std::max(1.0, std::chrono::duration<double, std::micro>(Clock::now() - move_t0).count());
         double gain = routed == group.size() && new_sum < old_sum ? static_cast<double>(old_sum - new_sum) : 0.0;
-        hw_[heur] = std::max(1e-4, (1 - lns_gamma_) * hw_[heur] + lns_gamma_ * gain / us);
+        hw_[heur] = std::max(sel_fix_ ? 1e-300 : 1e-4, (1 - lns_gamma_) * hw_[heur] + lns_gamma_ * gain / us);
         ++hcount_[heur];
       }
       if (routed == group.size() &&
@@ -451,7 +480,8 @@ class Router {
            (ta_t0_ > 0 && static_cast<double>(new_sum - old_sum) <= thr_))) {
         total_ += new_sum - old_sum;
         ++lns_accepted_;
-        if (new_sum < old_sum) since_imp_ = 0;
+        ++st_acc_[st];
+        if (new_sum < old_sum) { since_imp_ = 0; ++st_imp_[st]; st_gain_[st] += old_sum - new_sum; }
         if (track_best_ && total_ < best_total_) {
           best_total_ = total_;
           best_v_ = tv; best_p_ = tp; best_d_ = delay;
@@ -478,9 +508,18 @@ class Router {
 
   void lns_finish() {
     if (track_best_ && total_ > best_total_) restore_best();
-    if (verbose_)
+    if (verbose_) {
       std::cerr << "lns moves " << moves_ << " accepted " << lns_accepted_ << " total " << total_ << " heur "
                 << hcount_[0] << "/" << hcount_[1] << " w " << hw_[0] << "/" << hw_[1] << "\n";
+      const char* nm[3] = {"ideal", "window", "kick"};
+      for (int i = 0; i < 3; ++i)
+        if (st_try_[i])
+          std::fprintf(stderr,
+                       "STAT %s tried %lld size %.2f neg_legal %.3f accepted %.3f improved %.4f gain %lld us/move %.0f\n",
+                       nm[i], st_try_[i], double(st_size_[i]) / st_try_[i], double(st_neg_[i]) / st_try_[i],
+                       double(st_acc_[i]) / st_try_[i], double(st_imp_[i]) / st_try_[i], st_gain_[i],
+                       st_us_[i] / st_try_[i]);
+    }
   }
 
   // Idea 5 helpers: a worker ends an epoch on its best solution, then adopts the overall best.
@@ -613,6 +652,8 @@ class Router {
   long long restore_after_;
   int astar_;
   double par_sync_;
+  int sel_fix_, tie_rand_;
+  double sel_floor_;
   int minld_ = 1;
   std::vector<char> fast_;  // per layer: is a cheapest layer
   // tree / reverse-search scratch for ideas 1 and 2
@@ -643,6 +684,10 @@ class Router {
   double hw_[2] = {1e-2, 1e-2};
   long long hcount_[2] = {0, 0};
   long long since_imp_ = 0, since_best_ = 0;
+  // diagnostics (verbose only): per move type 0 ideal-tree, 1 window, 2 kick
+  long long st_try_[3] = {0, 0, 0}, st_neg_[3] = {0, 0, 0}, st_acc_[3] = {0, 0, 0}, st_imp_[3] = {0, 0, 0};
+  long long st_gain_[3] = {0, 0, 0}, st_size_[3] = {0, 0, 0};
+  double st_us_[3] = {0, 0, 0};
   // congestion-free tree per net (only other nets' pins blocked) and its delay
   std::vector<std::vector<int>> ideal_v;
   std::vector<long long> ideal_d;
@@ -766,6 +811,7 @@ class Router {
     if (remaining > 0) return false;
     if (!FreeOnly) {
       if (tie_share_) delay[n] = build_tree_share(n);
+      else if (tie_rand_) delay[n] = build_tree_rand(n);
       else build_tree(n);
     }
     return true;
@@ -813,6 +859,40 @@ class Router {
     if (!found) return false;
     build_tree(n);
     return true;
+  }
+
+  // P9: walk back from each sink choosing a uniformly random tight predecessor until the tree.
+  long long build_tree_rand(int n) {
+    auto& V = tv[n];
+    auto& P = tp[n];
+    V.clear(); P.clear();
+    const uint32_t ts = ++tstamp_;
+    int d = in_.drv[n];
+    V.push_back(d); P.push_back(-1);
+    inT_[d] = ts; dly[d] = 0;
+    static thread_local std::vector<int> path, preds;
+    for (int s : in_.sinks[n]) {
+      path.clear();
+      int v = s;
+      while (inT_[v] != ts) {
+        path.push_back(v);
+        preds.clear();
+        for_nb(v, [&](int u, int c) {
+          if (done[u] == stamp_ && dist[u] + c == dist[v]) preds.push_back(u);
+        });
+        v = preds.size() == 1 ? preds[0] : preds[std::uniform_int_distribution<size_t>(0, preds.size() - 1)(rng_)];
+      }
+      for (size_t i = path.size(); i-- > 0;) {
+        int u = path[i];
+        int p = i + 1 < path.size() ? path[i + 1] : v;
+        inT_[u] = ts;
+        dly[u] = dly[p] + edge_w(p, u);
+        V.push_back(u); P.push_back(p);
+      }
+    }
+    long long sum = 0;
+    for (int s : in_.sinks[n]) sum += dly[s];
+    return sum;
   }
 
   // Idea 2: tree from the last exact search using only tight edges (every sink keeps its
