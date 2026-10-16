@@ -64,7 +64,7 @@ Expected effects for router ideas are on the hard-tier dev aggregate (baseline =
 
 ## Explore 2026-10-16 additions (ranked; see findings memo of the same date)
 
-- **E1 · Adaptive neighborhood portfolio** — status: open — priority: high
+- **E1 · Adaptive neighborhood portfolio** — status: adopted (exp-007, window half-size 3 + roulette, mean r +0.54%; hard +0.73%). Open follow-up: adapt group size k, add blocker random walks
   - Evidence: B1 alone saturates (90 s vs 30 s +0.2%); MAPF-LNS (Li et al., IJCAI 2021) mixes
     random, agent-based (blocker random walk) and map-based (junction) destroy heuristics
     with roulette weights; BALANCE (arXiv 2312.16767) also adapts neighborhood size.
