@@ -32,6 +32,12 @@ seed, `r` = log(incumbent delay / candidate delay); `r > 0` means the candidate 
 - mean `r` > 0 otherwise → inconclusive (one rerun with 3 more seeds allowed)
 - mean `r` ≤ 0 → reject
 
+**Since exp-018 (2026-10-16).** A fresh rerun of the unchanged incumbent scored mean `r` =
++0.145% (9/11 cases "better") against the cached incumbent, so the rule above adopts a
+do-nothing change. Compare every candidate against a baseline run fresh in the same batch,
+on the same `--jobs`/`--threads`, and adopt only if mean `r` > +0.2%
+(`evaluate.py --min-r 0.2`). Mean `r` within ±0.2% is noise.
+
 Engineering-only changes (meant to be faster, not different) must reproduce identical routes
 at a fixed iteration count and show more moves per second.
 

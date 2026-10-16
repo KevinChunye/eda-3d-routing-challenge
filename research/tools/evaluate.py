@@ -87,7 +87,7 @@ def summarize(df):
     return per_case, tiers.loc[order]
 
 
-def compare(cand, inc):
+def compare(cand, inc, min_r_pct=0.0):
     key = ["seed", "tier", "case"]
     m = cand[key + ["delay", "legal"]].merge(inc[key + ["delay", "legal"]], on=key,
                                              suffixes=("_cand", "_inc"))
@@ -97,7 +97,7 @@ def compare(cand, inc):
     frac = float((per_case > 0).mean())
     if not cand["legal"].all():
         decision = "failed-correctness"
-    elif mean_r > 0 and frac >= 2 / 3:
+    elif mean_r > min_r_pct / 100 and frac >= 2 / 3:
         decision = "adopt"
     elif mean_r > 0:
         decision = "inconclusive"
@@ -115,6 +115,8 @@ def main():
     ap.add_argument("--exp-id")
     ap.add_argument("--idea")
     ap.add_argument("--note", default="")
+    ap.add_argument("--min-r", type=float, default=0.0,
+                    help="adopt needs mean r above this many percent (0.2 with a fresh base)")
     args = ap.parse_args()
 
     cases = select_cases(args.cases)
@@ -147,7 +149,7 @@ def main():
 
     if args.compare:
         inc = score_run(args.compare, cases)
-        pc, mean_r, frac, decision, n = compare(df, inc)
+        pc, mean_r, frac, decision, n = compare(df, inc, args.min_r)
         print(f"\n== vs {args.compare}: {n} paired case-runs")
         print((100 * pc).round(3).rename("r_% (log-ratio x100, + = candidate better)").to_string())
         print(f"mean r = {100 * mean_r:+.3f}%   cases improved = {frac:.0%}   "
