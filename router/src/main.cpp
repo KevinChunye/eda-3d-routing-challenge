@@ -21,11 +21,13 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <set>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "json.hpp"
@@ -154,6 +156,26 @@ class Router {
     lns_mix_ = static_cast<int>(opt.get_int("lns_mix", 0));
     lns_wr_ = static_cast<int>(opt.get_int("lns_wr", 3));
     lns_gamma_ = opt.get("lns_gamma", 0.01);
+    // Idea 1: negotiated trees grow one sink at a time; points already in the net's tree start
+    // at their true delay and pay no congestion again, so a shared trunk is charged once.
+    tree_seq_ = static_cast<int>(opt.get_int("tree_seq", 0));
+    // Idea 2: exact reroutes keep every sink's shortest delay but pick, among equally fast
+    // routes, the one adding the fewest new points (a fast-layer point counts 1 + tie_mid).
+    tie_share_ = static_cast<int>(opt.get_int("tie_share", 0));
+    tie_mid_ = static_cast<int>(opt.get_int("tie_mid", 1));
+    // Idea 3: threshold acceptance (accept a group up to ta_t0 worse, falling linearly to 0 at
+    // the deadline), a bigger "kick" neighborhood after kick_after moves without improvement,
+    // and a return to the best solution after restore_after moves without a new best.
+    ta_t0_ = opt.get("ta_t0", 0.0);
+    kick_after_ = opt.get_int("kick_after", 0);
+    kick_k_ = static_cast<int>(opt.get_int("kick_k", 12));
+    kick_wr_ = static_cast<int>(opt.get_int("kick_wr", 6));
+    restore_after_ = opt.get_int("restore_after", 0);
+    // Idea 4: A* for single-sink nets in exact and negotiated searches (exact delays kept).
+    astar_ = static_cast<int>(opt.get_int("astar", 0));
+    // Idea 5: with --threads T > 1, T LNS workers run from the same solution and every
+    // par_sync seconds all adopt the best one.
+    par_sync_ = opt.get("par_sync", 2.0);
     verbose_ = opt.get_int("verbose", 0);
     // Diagnostics only (off by default): write the current routes to snap_dir/snap_NNNN.sol.json
     // every snap_neg negotiation rounds, after each A2 sweep and every snap_s seconds of LNS,
@@ -186,6 +208,12 @@ class Router {
     intree.assign(N, 0);
     dly.assign(N, 0);
     buckets.resize(maxc + 1);
+    minld_ = *std::min_element(in.ld.begin(), in.ld.end());
+    fast_.assign(L, 0);
+    for (int z = 0; z < L; ++z) fast_[z] = in.ld[z] == minld_;
+    inT_.assign(N, 0); sinkm_.assign(N, 0); rseen_.assign(N, 0); rdone_.assign(N, 0);
+    rcost_.assign(N, 0); rnext_.assign(N, -1);
+    abuckets_.resize(maxc + std::max(minld_, via) + 2);
     tv.resize(nn); tp.resize(nn);
     netw_.resize(nn);
     for (int n = 0; n < nn; ++n) netw_[n] = std::pow(static_cast<double>(in.sinks[n].size()), -fan_alpha_);
@@ -284,6 +312,12 @@ class Router {
   // keep the result if the group's total delay did not rise.
   void lns() {
     if (!lns_) return;
+    lns_setup();
+    lns_run(deadline_);
+    lns_finish();
+  }
+
+  void lns_setup() {
     ideal_v.resize(nn);
     ideal_d.assign(nn, 0);
     std::vector<int> tmpP;
@@ -293,80 +327,89 @@ class Router {
     }
     std::fill(occ.begin(), occ.end(), 0);
     std::fill(hist.begin(), hist.end(), 0.0);
-    std::vector<uint32_t> net_mark(nn, 0);
-    uint32_t epoch = 0;
-    std::vector<int> group, cand;
-    std::vector<std::vector<int>> old_v(lns_k_), old_p(lns_k_);
-    std::vector<long long> old_d(lns_k_);
-    std::vector<double> cum(nn);
-    // best solution seen (annealing may leave it)
-    long long best_total = total_;
-    std::vector<std::vector<int>> best_v, best_p;
-    std::vector<long long> best_d;
-    bool have_best = false;
-    if (sa_t0_ > 0) { best_v = tv; best_p = tp; best_d = delay; have_best = true; }
-    auto lns_start = Clock::now();
-    double lns_span = std::max(1e-3, std::chrono::duration<double>(deadline_ - lns_start).count());
-    double temp = sa_t0_;
+    net_mark_.assign(nn, 0);
+    int kmax = std::max(lns_k_, kick_after_ > 0 ? kick_k_ : 0);
+    old_v_.resize(kmax); old_p_.resize(kmax); old_d_.resize(kmax);
+    cum_.resize(nn);
+    track_best_ = sa_t0_ > 0 || ta_t0_ > 0;
+    best_total_ = total_;
+    if (track_best_) { best_v_ = tv; best_p_ = tp; best_d_ = delay; }
+    lns_start_ = Clock::now();
+    lns_span_ = std::max(1e-3, std::chrono::duration<double>(deadline_ - lns_start_).count());
+    temp_ = sa_t0_;
+    thr_ = ta_t0_;
+  }
+
+  // Runs LNS moves until `until`; returns false if no net has any excess left.
+  bool lns_run(Clock::time_point until) {
     std::uniform_real_distribution<double> unif(0.0, 1.0);
-    double hw[2] = {1e-2, 1e-2};
-    long long hcount[2] = {0, 0};
     while (true) {
       auto now = Clock::now();
-      if (now >= deadline_ || (max_moves_ >= 0 && moves_ >= max_moves_)) break;
+      if (now >= until || (max_moves_ >= 0 && moves_ >= max_moves_)) break;
       if (!snap_dir_.empty() && std::chrono::duration<double>(now - last_snap_).count() >= snap_s_)
         snapshot("search", 0);
-      if (sa_t0_ > 0 && (moves_ & 63) == 0) {
-        double frac = std::chrono::duration<double>(now - lns_start).count() / lns_span;
-        temp = sa_t0_ * std::pow(sa_t1_ / sa_t0_, std::min(1.0, frac));
+      if ((sa_t0_ > 0 || ta_t0_ > 0) && (moves_ & 63) == 0) {
+        double frac = std::min(1.0, std::chrono::duration<double>(now - lns_start_).count() / lns_span_);
+        if (sa_t0_ > 0) temp_ = sa_t0_ * std::pow(sa_t1_ / sa_t0_, frac);
+        if (ta_t0_ > 0) thr_ = ta_t0_ * (1.0 - frac);
+      }
+      if (restore_after_ > 0 && track_best_ && since_best_ >= restore_after_ && total_ > best_total_) {
+        restore_best();
+        since_best_ = 0;
       }
       double acc = 0;
       for (int n = 0; n < nn; ++n) {
         acc += static_cast<double>(delay[n] - ideal_d[n]);
-        cum[n] = acc;
+        cum_[n] = acc;
       }
-      if (acc <= 0) break;
+      if (acc <= 0) return false;
       double r = std::uniform_real_distribution<double>(0.0, acc)(rng_);
-      int t = static_cast<int>(std::upper_bound(cum.begin(), cum.end(), r) - cum.begin());
+      int t = static_cast<int>(std::upper_bound(cum_.begin(), cum_.end(), r) - cum_.begin());
       if (t >= nn) t = nn - 1;
-      ++epoch;
-      net_mark[t] = epoch;
-      cand.clear();
+      ++epoch_;
+      net_mark_[t] = epoch_;
+      cand_.clear();
+      bool kick = kick_after_ > 0 && since_imp_ >= kick_after_;
+      if (kick) since_imp_ = 0;
       int heur = 0;
-      if (lns_mix_) heur = unif(rng_) * (hw[0] + hw[1]) < hw[0] ? 0 : 1;
+      if (kick) heur = 1;
+      else if (lns_mix_) heur = unif(rng_) * (hw_[0] + hw_[1]) < hw_[0] ? 0 : 1;
+      const int wr = kick ? kick_wr_ : lns_wr_;
+      const int kk = kick ? kick_k_ : lns_k_;
       auto move_t0 = Clock::now();
       if (heur == 0) {
         for (int v : ideal_v[t]) {
           int o = owner[v];
-          if (o >= 0 && net_mark[o] != epoch) { net_mark[o] = epoch; cand.push_back(o); }
+          if (o >= 0 && net_mark_[o] != epoch_) { net_mark_[o] = epoch_; cand_.push_back(o); }
         }
       } else {
         int c = ideal_v[t][std::uniform_int_distribution<size_t>(0, ideal_v[t].size() - 1)(rng_)];
         int cx = X[c], cy = Y[c];
         for (int z = 0; z < L; ++z)
-          for (int y = std::max(0, cy - lns_wr_); y <= std::min(H - 1, cy + lns_wr_); ++y)
-            for (int x = std::max(0, cx - lns_wr_); x <= std::min(W - 1, cx + lns_wr_); ++x) {
+          for (int y = std::max(0, cy - wr); y <= std::min(H - 1, cy + wr); ++y)
+            for (int x = std::max(0, cx - wr); x <= std::min(W - 1, cx + wr); ++x) {
               int o = owner[(z * H + y) * W + x];
-              if (o >= 0 && net_mark[o] != epoch) { net_mark[o] = epoch; cand.push_back(o); }
+              if (o >= 0 && net_mark_[o] != epoch_) { net_mark_[o] = epoch_; cand_.push_back(o); }
             }
       }
-      std::shuffle(cand.begin(), cand.end(), rng_);
-      if (static_cast<int>(cand.size()) > lns_k_ - 1) cand.resize(lns_k_ - 1);
+      std::shuffle(cand_.begin(), cand_.end(), rng_);
+      if (static_cast<int>(cand_.size()) > kk - 1) cand_.resize(kk - 1);
+      auto& group = group_;
       group.clear();
       group.push_back(t);
-      group.insert(group.end(), cand.begin(), cand.end());
+      group.insert(group.end(), cand_.begin(), cand_.end());
       if (lns_order_ == 1) std::shuffle(group.begin(), group.end(), rng_);
       long long old_sum = 0;
       for (size_t i = 0; i < group.size(); ++i) {
         int n = group[i];
-        old_v[i] = tv[n]; old_p[i] = tp[n]; old_d[i] = delay[n];
+        old_v_[i] = tv[n]; old_p_[i] = tp[n]; old_d_[i] = delay[n];
         old_sum += delay[n];
         rip(n);
       }
       if (lns_win_ >= 0) {
         wx0_ = W; wx1_ = -1; wy0_ = H; wy1_ = -1;
         for (size_t i = 0; i < group.size(); ++i)
-          for (int v : old_v[i]) {
+          for (int v : old_v_[i]) {
             wx0_ = std::min<int>(wx0_, X[v]); wx1_ = std::max<int>(wx1_, X[v]);
             wy0_ = std::min<int>(wy0_, Y[v]); wy1_ = std::max<int>(wy1_, Y[v]);
           }
@@ -393,41 +436,70 @@ class Router {
         }
       }
       ++moves_;
+      ++since_imp_;
+      ++since_best_;
       wx0_ = 0; wx1_ = 1 << 30; wy0_ = 0; wy1_ = 1 << 30;
-      if (lns_mix_) {
+      if (lns_mix_ && !kick) {
         double us = std::max(1.0, std::chrono::duration<double, std::micro>(Clock::now() - move_t0).count());
         double gain = routed == group.size() && new_sum < old_sum ? static_cast<double>(old_sum - new_sum) : 0.0;
-        hw[heur] = std::max(1e-4, (1 - lns_gamma_) * hw[heur] + lns_gamma_ * gain / us);
-        ++hcount[heur];
+        hw_[heur] = std::max(1e-4, (1 - lns_gamma_) * hw_[heur] + lns_gamma_ * gain / us);
+        ++hcount_[heur];
       }
       if (routed == group.size() &&
-          (new_sum <= old_sum || (sa_t0_ > 0 && unif(rng_) < std::exp(-(new_sum - old_sum) / temp)))) {
+          (new_sum <= old_sum || (sa_t0_ > 0 && unif(rng_) < std::exp(-(new_sum - old_sum) / temp_)) ||
+           (ta_t0_ > 0 && static_cast<double>(new_sum - old_sum) <= thr_))) {
         total_ += new_sum - old_sum;
         ++lns_accepted_;
-        if (sa_t0_ > 0 && total_ < best_total) {
-          best_total = total_;
-          best_v = tv; best_p = tp; best_d = delay;
-          have_best = true;
+        if (new_sum < old_sum) since_imp_ = 0;
+        if (track_best_ && total_ < best_total_) {
+          best_total_ = total_;
+          best_v_ = tv; best_p_ = tp; best_d_ = delay;
+          since_best_ = 0;
         }
         continue;
       }
       for (size_t i = 0; i < routed; ++i) rip(group[i]);
       for (size_t i = 0; i < group.size(); ++i) {
         int n = group[i];
-        tv[n].swap(old_v[i]); tp[n].swap(old_p[i]); delay[n] = old_d[i];
+        tv[n].swap(old_v_[i]); tp[n].swap(old_p_[i]); delay[n] = old_d_[i];
         place(n);
       }
     }
-    if (sa_t0_ > 0 && total_ > best_total && have_best) {
-      for (int n = 0; n < nn; ++n) rip(n);
-      tv = best_v; tp = best_p; delay = best_d;
-      for (int n = 0; n < nn; ++n) place(n);
-      total_ = best_total;
-    }
+    return true;
+  }
+
+  void restore_best() {
+    for (int n = 0; n < nn; ++n) rip(n);
+    tv = best_v_; tp = best_p_; delay = best_d_;
+    for (int n = 0; n < nn; ++n) place(n);
+    total_ = best_total_;
+  }
+
+  void lns_finish() {
+    if (track_best_ && total_ > best_total_) restore_best();
     if (verbose_)
       std::cerr << "lns moves " << moves_ << " accepted " << lns_accepted_ << " total " << total_ << " heur "
-                << hcount[0] << "/" << hcount[1] << " w " << hw[0] << "/" << hw[1] << "\n";
+                << hcount_[0] << "/" << hcount_[1] << " w " << hw_[0] << "/" << hw_[1] << "\n";
   }
+
+  // Idea 5 helpers: a worker ends an epoch on its best solution, then adopts the overall best.
+  void epoch_end() {
+    if (track_best_ && total_ > best_total_) restore_best();
+    best_total_ = total_;
+    if (track_best_) { best_v_ = tv; best_p_ = tp; best_d_ = delay; }
+  }
+  void adopt(const Router& o) {
+    tv = o.tv; tp = o.tp; delay = o.delay; owner = o.owner; total_ = o.total_;
+    best_total_ = total_;
+    if (track_best_) { best_v_ = tv; best_p_ = tp; best_d_ = delay; }
+    since_best_ = 0; since_imp_ = 0;
+  }
+  void reseed(uint64_t s) { rng_.seed(s); }
+  void quiet() { snap_dir_.clear(); verbose_ = 0; }
+  void add_moves(long long m) { moves_ += m; }
+  bool lns_enabled() const { return lns_ != 0; }
+  double par_sync() const { return par_sync_; }
+  Clock::time_point deadline() const { return deadline_; }
 
   // PathFinder among the (ripped) group with every other net fixed. Returns true if the
   // group's trees end pairwise disjoint (trees left in tv/tp, not placed). occ and hist are
@@ -533,12 +605,43 @@ class Router {
   double fan_alpha_;
   int lns_mix_, lns_wr_;
   double lns_gamma_;
+  int tree_seq_, tie_share_, tie_mid_;
+  double ta_t0_;
+  long long kick_after_;
+  int kick_k_, kick_wr_;
+  long long restore_after_;
+  int astar_;
+  double par_sync_;
+  int minld_ = 1;
+  std::vector<char> fast_;  // per layer: is a cheapest layer
+  // tree / reverse-search scratch for ideas 1 and 2
+  std::vector<uint32_t> inT_, sinkm_, rseen_, rdone_;
+  std::vector<int> rcost_, rnext_;
+  uint32_t tstamp_ = 0, sstamp_ = 0, rstamp_ = 0;
+  std::vector<std::pair<int, int>> rheap_;
+  std::vector<std::vector<int>> abuckets_;
   std::vector<double> netw_;
   std::vector<char> gaff_;
   int wx0_ = 0, wx1_ = 1 << 30, wy0_ = 0, wy1_ = 1 << 30;  // search window (inclusive)
   double gneg_pf0_, gneg_mult_, gneg_hist_;
   std::vector<int> touched_;
   long long lns_accepted_ = 0;
+  // LNS state, kept across lns_run calls
+  std::vector<uint32_t> net_mark_;
+  uint32_t epoch_ = 0;
+  std::vector<int> group_, cand_;
+  std::vector<std::vector<int>> old_v_, old_p_;
+  std::vector<long long> old_d_;
+  std::vector<double> cum_;
+  bool track_best_ = false;
+  long long best_total_ = 0;
+  std::vector<std::vector<int>> best_v_, best_p_;
+  std::vector<long long> best_d_;
+  Clock::time_point lns_start_{};
+  double lns_span_ = 1.0, temp_ = 0.0, thr_ = 0.0;
+  double hw_[2] = {1e-2, 1e-2};
+  long long hcount_[2] = {0, 0};
+  long long since_imp_ = 0, since_best_ = 0;
   // congestion-free tree per net (only other nets' pins blocked) and its delay
   std::vector<std::vector<int>> ideal_v;
   std::vector<long long> ideal_d;
@@ -624,6 +727,7 @@ class Router {
   // Exact shortest-path tree for net n over vertices free or owned by n (bucket queue).
   template <bool FreeOnly = false>
   bool route_exact(int n) {
+    if (!FreeOnly && astar_ && in_.sinks[n].size() == 1) return route_exact_astar(n);
     ++stamp_;
     int remaining = 0;
     for (int s : in_.sinks[n])
@@ -659,14 +763,114 @@ class Router {
     }
     for (auto& b : buckets) b.clear();
     if (remaining > 0) return false;
-    if (!FreeOnly) build_tree(n);
+    if (!FreeOnly) {
+      if (tie_share_) delay[n] = build_tree_share(n);
+      else build_tree(n);
+    }
     return true;
+  }
+
+  // Idea 4: A* for a single-sink net on true delays (bucket queue keyed by delay + bound).
+  // The bound (cheapest step delay x Manhattan distance + via delay x layer gap) never
+  // overestimates and changes by at most one step's cost, so the first pop of the sink is exact.
+  bool route_exact_astar(int n) {
+    ++stamp_;
+    const int s = in_.sinks[n][0], d = in_.drv[n];
+    const int sx = X[s], sy = Y[s], sz = Z[s];
+    auto h = [&](int v) { return minld_ * (std::abs(X[v] - sx) + std::abs(Y[v] - sy)) + via * std::abs(Z[v] - sz); };
+    const int B = static_cast<int>(abuckets_.size());
+    dist[d] = 0; seen[d] = stamp_; pred[d] = -1;
+    int f0 = h(d);
+    abuckets_[f0 % B].push_back(d);
+    int queued = 1;
+    bool found = false;
+    for (int cur = f0; queued > 0 && !found; ++cur) {
+      auto& b = abuckets_[cur % B];
+      for (size_t i = 0; i < b.size(); ++i) {
+        int v = b[i];
+        --queued;
+        if (done[v] == stamp_ || dist[v] + h(v) != cur) continue;
+        done[v] = stamp_;
+        if (v == s) { found = true; break; }
+        for_nb(v, [&](int u, int c) {
+          int o = owner[u];
+          if (o >= 0 && o != n) return;
+          if (X[u] < wx0_ || X[u] > wx1_ || Y[u] < wy0_ || Y[u] > wy1_) return;
+          int nd = dist[v] + c;
+          if (seen[u] != stamp_ || nd < dist[u]) {
+            seen[u] = stamp_;
+            dist[u] = nd;
+            pred[u] = v;
+            abuckets_[(nd + h(u)) % B].push_back(u);
+            ++queued;
+          }
+        });
+      }
+      if (!found) b.clear();
+    }
+    for (auto& b : abuckets_) b.clear();
+    if (!found) return false;
+    build_tree(n);
+    return true;
+  }
+
+  // Idea 2: tree from the last exact search using only tight edges (every sink keeps its
+  // shortest delay). Sinks attach farthest first; each walks back through the shortest-path
+  // graph to the nearest point already in the tree, adding as few new points as possible.
+  long long build_tree_share(int n) {
+    auto& V = tv[n];
+    auto& P = tp[n];
+    V.clear(); P.clear();
+    const uint32_t ts = ++tstamp_;
+    int d = in_.drv[n];
+    V.push_back(d); P.push_back(-1);
+    inT_[d] = ts; dly[d] = 0;
+    static thread_local std::vector<int> order;
+    order.assign(in_.sinks[n].begin(), in_.sinks[n].end());
+    std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return dist[a] > dist[b]; });
+    auto cmp = [](const std::pair<int, int>& a, const std::pair<int, int>& b) { return a.first > b.first; };
+    for (int s : order) {
+      if (inT_[s] == ts) continue;
+      const uint32_t rs = ++rstamp_;
+      rheap_.clear();
+      rcost_[s] = 0; rseen_[s] = rs; rnext_[s] = -1;
+      rheap_.push_back({0, s});
+      int hit = -1;
+      while (!rheap_.empty()) {
+        std::pop_heap(rheap_.begin(), rheap_.end(), cmp);
+        auto [cv, v] = rheap_.back();
+        rheap_.pop_back();
+        if (rdone_[v] == rs || cv > rcost_[v]) continue;
+        rdone_[v] = rs;
+        if (inT_[v] == ts) { hit = v; break; }
+        for_nb(v, [&](int u, int c) {
+          if (done[u] != stamp_ || dist[u] + c != dist[v]) return;
+          int nc = cv + (inT_[u] == ts ? 0 : 1 + (fast_[Z[u]] ? tie_mid_ : 0));
+          if (rseen_[u] != rs || nc < rcost_[u]) {
+            rseen_[u] = rs; rcost_[u] = nc; rnext_[u] = v;
+            rheap_.push_back({nc, u});
+            std::push_heap(rheap_.begin(), rheap_.end(), cmp);
+          }
+        });
+      }
+      if (hit < 0) { std::cerr << "internal error: tie_share found no tight path\n"; std::exit(3); }
+      for (int p = hit, v = rnext_[hit]; v != -1; p = v, v = rnext_[v]) {
+        inT_[v] = ts;
+        dly[v] = dly[p] + edge_w(p, v);
+        V.push_back(v); P.push_back(p);
+      }
+    }
+    long long sum = 0;
+    for (int s : in_.sinks[n]) sum += dly[s];
+    return sum;
   }
 
   // Negotiated-cost shortest-path tree for net n: other nets' pins are forbidden; a step
   // into v costs (delay + hist[v]) * (1 + pf * occ[v]).
   template <bool Group = false>
   bool route_neg(int n, double pf) {
+    if (tree_seq_ && in_.sinks[n].size() > 1) return route_neg_seq<Group>(n, pf);
+    if (astar_ && in_.sinks[n].size() == 1) return route_neg_astar<Group>(n, pf);
     ++stamp_;
     int remaining = 0;
     for (int s : in_.sinks[n])
@@ -704,9 +908,154 @@ class Router {
     build_tree(n);
     return true;
   }
+
+  inline double neg_cost(int u, int c, double pf, double w, double wpf) const {
+    return fan_alpha_ == 0.0 ? (c + hist[u]) * (1.0 + pf * occ[u]) : (c + w * hist[u]) * (1.0 + wpf * occ[u]);
+  }
+
+  // Idea 1: grow the negotiated tree one sink at a time. Each search starts from every point
+  // already in the tree at its true delay from the driver (no congestion charged again) and
+  // stops at the cheapest remaining sink, whose path is then added.
+  template <bool Group>
+  bool route_neg_seq(int n, double pf) {
+    auto& V = tv[n];
+    auto& P = tp[n];
+    V.clear(); P.clear();
+    const uint32_t ts = ++tstamp_, ss = ++sstamp_;
+    int d = in_.drv[n];
+    V.push_back(d); P.push_back(-1);
+    inT_[d] = ts; dly[d] = 0;
+    int remaining = 0;
+    for (int s : in_.sinks[n])
+      if (sinkm_[s] != ss) { sinkm_[s] = ss; ++remaining; }
+    const double w = netw_[n], wpf = w * pf;
+    auto cmp = [](const std::pair<double, int>& a, const std::pair<double, int>& b) { return a.first > b.first; };
+    static thread_local std::vector<int> path;
+    while (remaining > 0) {
+      ++stamp_;
+      heap_.clear();
+      for (int v : V) {
+        fdist[v] = dly[v]; seen[v] = stamp_; pred[v] = -1;
+        heap_.push_back({static_cast<double>(dly[v]), v});
+      }
+      std::make_heap(heap_.begin(), heap_.end(), cmp);
+      int found = -1;
+      while (!heap_.empty()) {
+        std::pop_heap(heap_.begin(), heap_.end(), cmp);
+        auto [dv, v] = heap_.back();
+        heap_.pop_back();
+        if (done[v] == stamp_ || dv > fdist[v]) continue;
+        done[v] = stamp_;
+        if (sinkm_[v] == ss && inT_[v] != ts) { found = v; break; }
+        for_nb(v, [&](int u, int c) {
+          if (inT_[u] == ts) return;
+          int pn = Group ? owner[u] : pin_net[u];
+          if (pn >= 0 && pn != n) return;
+          if (X[u] < wx0_ || X[u] > wx1_ || Y[u] < wy0_ || Y[u] > wy1_) return;
+          double nd = dv + neg_cost(u, c, pf, w, wpf);
+          if (seen[u] != stamp_ || nd < fdist[u]) {
+            seen[u] = stamp_; fdist[u] = nd; pred[u] = v;
+            heap_.push_back({nd, u});
+            std::push_heap(heap_.begin(), heap_.end(), cmp);
+          }
+        });
+      }
+      if (found < 0) return false;
+      path.clear();
+      for (int v = found; inT_[v] != ts; v = pred[v]) path.push_back(v);
+      for (size_t i = path.size(); i-- > 0;) {
+        int u = path[i], p = pred[u];
+        inT_[u] = ts;
+        dly[u] = dly[p] + edge_w(p, u);
+        V.push_back(u); P.push_back(p);
+        if (sinkm_[u] == ss) --remaining;
+      }
+    }
+    long long sum = 0;
+    for (int s : in_.sinks[n]) sum += dly[s];
+    delay[n] = sum;
+    return true;
+  }
+
+  // Idea 4: negotiated search for a single-sink net with the same admissible bound as A*.
+  template <bool Group>
+  bool route_neg_astar(int n, double pf) {
+    ++stamp_;
+    const int s = in_.sinks[n][0], d = in_.drv[n];
+    const int sx = X[s], sy = Y[s], sz = Z[s];
+    auto h = [&](int v) {
+      return static_cast<double>(minld_ * (std::abs(X[v] - sx) + std::abs(Y[v] - sy)) + via * std::abs(Z[v] - sz));
+    };
+    const double w = netw_[n], wpf = w * pf;
+    auto cmp = [](const std::pair<double, int>& a, const std::pair<double, int>& b) { return a.first > b.first; };
+    heap_.clear();
+    fdist[d] = 0; seen[d] = stamp_; pred[d] = -1;
+    heap_.push_back({h(d), d});
+    bool found = false;
+    while (!heap_.empty()) {
+      std::pop_heap(heap_.begin(), heap_.end(), cmp);
+      auto [fv, v] = heap_.back();
+      heap_.pop_back();
+      if (done[v] == stamp_ || fv > fdist[v] + h(v) + 1e-9) continue;
+      done[v] = stamp_;
+      if (v == s) { found = true; break; }
+      double dv = fdist[v];
+      for_nb(v, [&](int u, int c) {
+        int pn = Group ? owner[u] : pin_net[u];
+        if (pn >= 0 && pn != n) return;
+        if (X[u] < wx0_ || X[u] > wx1_ || Y[u] < wy0_ || Y[u] > wy1_) return;
+        double nd = dv + neg_cost(u, c, pf, w, wpf);
+        if (seen[u] != stamp_ || nd < fdist[u]) {
+          seen[u] = stamp_; fdist[u] = nd; pred[u] = v;
+          heap_.push_back({nd + h(u), u});
+          std::push_heap(heap_.begin(), heap_.end(), cmp);
+        }
+      });
+    }
+    if (!found) return false;
+    build_tree(n);
+    return true;
+  }
 };
 
 // --------------------------------------------------------------------------------------
+// Idea 5: T workers run LNS from the same solution with different seeds; every par_sync
+// seconds each ends on its best solution and all adopt the overall best.
+static void parallel_lns(Router& r, int T, uint64_t seed) {
+  r.lns_setup();
+  std::vector<std::unique_ptr<Router>> extra;
+  std::vector<Router*> all{&r};
+  for (int t = 1; t < T; ++t) {
+    extra.push_back(std::make_unique<Router>(r));
+    extra.back()->reseed(seed * 1000003ULL + static_cast<uint64_t>(t));
+    extra.back()->quiet();
+    all.push_back(extra.back().get());
+  }
+  std::vector<long long> base_moves;
+  for (auto* x : all) base_moves.push_back(x->moves());
+  while (Clock::now() < r.deadline()) {
+    auto until = std::min(r.deadline(),
+                          Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(r.par_sync())));
+    std::vector<char> more(all.size(), 1);
+    std::vector<std::thread> th;
+    for (size_t i = 0; i < all.size(); ++i)
+      th.emplace_back([&, i] { more[i] = all[i]->lns_run(until); all[i]->epoch_end(); });
+    for (auto& t : th) t.join();
+    Router* best = all[0];
+    for (auto* x : all)
+      if (x->total() < best->total()) best = x;
+    for (auto* x : all)
+      if (x != best) x->adopt(*best);
+    bool any = false;
+    for (char m : more) any = any || m;
+    if (!any) break;
+  }
+  long long extra_moves = 0;
+  for (size_t i = 1; i < all.size(); ++i) extra_moves += all[i]->moves() - base_moves[i];
+  r.add_moves(extra_moves);
+  r.lns_finish();
+}
+
 int main(int argc, char** argv) {
   auto t0 = Clock::now();
   std::string inst_path, out_path;
@@ -742,7 +1091,6 @@ int main(int argc, char** argv) {
                  "[--set k=v ...]\n";
     return 2;
   }
-  (void)threads;  // single-threaded for now
 
   // Finish with a safety margin so the file is written before the limit.
   double margin = std::min(1.0, 0.03 * time_limit + 0.05);
@@ -760,7 +1108,8 @@ int main(int argc, char** argv) {
   }
   auto t_legal = Clock::now();
   r.refine();
-  r.lns();
+  if (threads > 1 && r.lns_enabled()) parallel_lns(r, threads, seed);
+  else r.lns();
   r.final_snapshot();
   r.write(out_path);
   double secs = std::chrono::duration<double>(Clock::now() - t0).count();

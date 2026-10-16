@@ -1,5 +1,5 @@
 CXX ?= g++
-CXXFLAGS ?= -O2 -std=c++20 -Wall -Wextra -ffp-contract=off
+CXXFLAGS ?= -O2 -std=c++20 -Wall -Wextra -ffp-contract=off -pthread
 BUILD := build
 
 $(BUILD)/m3d_route: src/main.cpp src/json.hpp
