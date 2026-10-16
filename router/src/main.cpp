@@ -44,6 +44,11 @@ struct Options {
     auto it = kv.find(k);
     return it == kv.end() ? dflt : std::stod(it->second);
   }
+  std::string get_str(const std::string& k, const std::string& dflt) {
+    used.insert(k);
+    auto it = kv.find(k);
+    return it == kv.end() ? dflt : it->second;
+  }
   long long get_int(const std::string& k, long long dflt) {
     used.insert(k);
     auto it = kv.find(k);
@@ -150,6 +155,12 @@ class Router {
     lns_wr_ = static_cast<int>(opt.get_int("lns_wr", 3));
     lns_gamma_ = opt.get("lns_gamma", 0.01);
     verbose_ = opt.get_int("verbose", 0);
+    // Diagnostics only (off by default): write the current routes to snap_dir/snap_NNNN.sol.json
+    // every snap_neg negotiation rounds, after each A2 sweep and every snap_s seconds of LNS,
+    // with one line per snapshot in snap_dir/index.jsonl. Used for animations.
+    snap_dir_ = opt.get_str("snap_dir", "");
+    snap_s_ = opt.get("snap_s", 1.0);
+    snap_neg_ = static_cast<int>(opt.get_int("snap_neg", 5));
 
     X.resize(N); Y.resize(N); Z.resize(N);
     for (int v = 0; v < N; ++v) {
@@ -209,6 +220,8 @@ class Router {
       for (int v = 0; v < N; ++v)
         if (occ[v] > 1) over.push_back(v);
       if (verbose_) std::cerr << "neg iter " << neg_iters_ << " overused " << over.size() << "\n";
+      if (!snap_dir_.empty() && (neg_iters_ == 1 || neg_iters_ % snap_neg_ == 0 || over.empty()))
+        snapshot(over.empty() ? "legal" : "negotiate", static_cast<long long>(over.size()));
       if (over.empty()) break;
       if (Clock::now() > deadline_) return false;
       for (int v : over) hist[v] += hist_fac_ * (occ[v] - 1);
@@ -258,6 +271,7 @@ class Router {
         if (delay[n] < old) ++improved;
       }
       ++sweeps_;
+      snapshot("refine", 0);
       if (verbose_) std::cerr << "sweep " << sweeps_ << " improved " << improved << " total " << total_ << "\n";
       if (stop || improved == 0) break;
     }
@@ -300,6 +314,8 @@ class Router {
     while (true) {
       auto now = Clock::now();
       if (now >= deadline_ || (max_moves_ >= 0 && moves_ >= max_moves_)) break;
+      if (!snap_dir_.empty() && std::chrono::duration<double>(now - last_snap_).count() >= snap_s_)
+        snapshot("search", 0);
       if (sa_t0_ > 0 && (moves_ & 63) == 0) {
         double frac = std::chrono::duration<double>(now - lns_start).count() / lns_span;
         temp = sa_t0_ * std::pow(sa_t1_ / sa_t0_, std::min(1.0, frac));
@@ -528,6 +544,32 @@ class Router {
   std::vector<long long> ideal_d;
   long long max_moves_;
   int verbose_;
+  std::string snap_dir_;
+  double snap_s_;
+  int snap_neg_;
+  int snap_count_ = 0;
+  Clock::time_point last_snap_{};
+
+  void snapshot(const char* phase, long long overused) {
+    if (snap_dir_.empty()) return;
+    char name[64];
+    std::snprintf(name, sizeof name, "snap_%04d.sol.json", snap_count_);
+    write(snap_dir_ + "/" + name);
+    long long self_delay = 0;
+    for (int n = 0; n < nn; ++n) self_delay += delay[n];
+    std::ofstream idx(snap_dir_ + "/index.jsonl", std::ios::app);
+    idx << "{\"i\": " << snap_count_ << ", \"file\": \"" << name << "\", \"t\": "
+        << std::chrono::duration<double>(Clock::now() - start_).count() << ", \"phase\": \"" << phase
+        << "\", \"self_delay\": " << self_delay << ", \"overused\": " << overused << ", \"moves\": " << moves_
+        << "}\n";
+    ++snap_count_;
+    last_snap_ = Clock::now();
+  }
+
+ public:
+  void final_snapshot() { snapshot("final", 0); }
+
+ private:
   long long moves_ = 0;
   int sweeps_ = 0;
   int neg_iters_ = 0;
@@ -719,6 +761,7 @@ int main(int argc, char** argv) {
   auto t_legal = Clock::now();
   r.refine();
   r.lns();
+  r.final_snapshot();
   r.write(out_path);
   double secs = std::chrono::duration<double>(Clock::now() - t0).count();
   double ref_secs = std::chrono::duration<double>(Clock::now() - t_legal).count();

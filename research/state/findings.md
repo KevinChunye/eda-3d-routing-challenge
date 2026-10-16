@@ -134,3 +134,19 @@ converges, so most of the budget is unused.
   public, big ones (case_13–20) 3–8% worse. Same cause: little time left for LNS after
   negotiation on big grids, and every LNS search spans the whole grid. E2/E3 (and A* for
   sparse nets) are the levers there.
+
+## 2026-10-16 — submission run vs every public entry (`compare_public.py`)
+
+Checker scores of every public entry next to our timed run (`submit-20261016`, seed 1); the
+aggregates reproduce LEADERBOARD.md exactly.
+- Hard 1.3303: rank 8 of 18; first of 7 entries that report runtime (next: iamparv7043
+  1.3019 at 7,333 s; ours 531 s). We trail the best public route by 4–9% on every hard case
+  (case_09 6.4%, case_08 8.8%): an even gap, not a few bad cases.
+- Congested 1.2367 (rank 7 of 11, 3rd of 5 with runtime) and designs 1.3685 (7 of 13, 3rd of
+  6): the runtime-reporting entries above us total 3,600 s and 47,000–61,000 s vs our
+  1,196 s / 897 s; warm_lns_refinement's runtime excludes its warm start.
+- Score ceiling from the best lower bound (geometric mean of baseline / lb_best): hard 1.62,
+  congested 1.62, designs 1.80.
+- Router flag `snap_dir` (diagnostics, off by default; routes byte-identical with it off)
+  plus `animate_run.py` render one run as a GIF; hard case_01 turns legal at 1.7 s (9,872)
+  and reaches 8,908 by 59 s.
