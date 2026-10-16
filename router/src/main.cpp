@@ -120,6 +120,9 @@ class Router {
     esc1_ = opt.get("neg_esc1", 0.35);
     esc2_ = opt.get("neg_esc2", 0.6);
     max_moves_ = opt.get_int("max_iters", -1);
+    lns_ = static_cast<int>(opt.get_int("lns", 0));
+    lns_k_ = static_cast<int>(opt.get_int("lns_k", 4));
+    lns_order_ = static_cast<int>(opt.get_int("lns_order", 1));
     verbose_ = opt.get_int("verbose", 0);
 
     X.resize(N); Y.resize(N); Z.resize(N);
@@ -232,6 +235,80 @@ class Router {
     }
   }
 
+  // ---- B1: excess-targeted neighborhood search ----------------------------------------
+  // Pick a net with probability proportional to its excess over its congestion-free delay;
+  // the group is that net plus up to lns_k-1 nets sitting on its congestion-free tree. Rip
+  // the group, reroute exact shortest-path trees (target first, the rest in random order),
+  // keep the result if the group's total delay did not rise.
+  void lns() {
+    if (!lns_) return;
+    ideal_v.resize(nn);
+    ideal_d.assign(nn, 0);
+    std::vector<int> tmpP;
+    for (int n = 0; n < nn; ++n) {
+      route_exact<true>(n);
+      ideal_d[n] = build_tree_into(n, ideal_v[n], tmpP);
+    }
+    std::vector<uint32_t> net_mark(nn, 0);
+    uint32_t epoch = 0;
+    std::vector<int> group, cand;
+    std::vector<std::vector<int>> old_v(lns_k_), old_p(lns_k_);
+    std::vector<long long> old_d(lns_k_);
+    std::vector<double> cum(nn);
+    while (Clock::now() < deadline_ && !(max_moves_ >= 0 && moves_ >= max_moves_)) {
+      double acc = 0;
+      for (int n = 0; n < nn; ++n) {
+        acc += static_cast<double>(delay[n] - ideal_d[n]);
+        cum[n] = acc;
+      }
+      if (acc <= 0) break;
+      double r = std::uniform_real_distribution<double>(0.0, acc)(rng_);
+      int t = static_cast<int>(std::upper_bound(cum.begin(), cum.end(), r) - cum.begin());
+      if (t >= nn) t = nn - 1;
+      ++epoch;
+      net_mark[t] = epoch;
+      cand.clear();
+      for (int v : ideal_v[t]) {
+        int o = owner[v];
+        if (o >= 0 && net_mark[o] != epoch) { net_mark[o] = epoch; cand.push_back(o); }
+      }
+      std::shuffle(cand.begin(), cand.end(), rng_);
+      if (static_cast<int>(cand.size()) > lns_k_ - 1) cand.resize(lns_k_ - 1);
+      group.clear();
+      group.push_back(t);
+      group.insert(group.end(), cand.begin(), cand.end());
+      if (lns_order_ == 1) std::shuffle(group.begin(), group.end(), rng_);
+      long long old_sum = 0;
+      for (size_t i = 0; i < group.size(); ++i) {
+        int n = group[i];
+        old_v[i] = tv[n]; old_p[i] = tp[n]; old_d[i] = delay[n];
+        old_sum += delay[n];
+        rip(n);
+      }
+      long long new_sum = 0;
+      size_t routed = 0;
+      for (; routed < group.size(); ++routed) {
+        int n = group[routed];
+        if (!route_exact(n)) break;
+        place(n);
+        new_sum += delay[n];
+      }
+      ++moves_;
+      if (routed == group.size() && new_sum <= old_sum) {
+        total_ += new_sum - old_sum;
+        ++lns_accepted_;
+        continue;
+      }
+      for (size_t i = 0; i < routed; ++i) rip(group[i]);
+      for (size_t i = 0; i < group.size(); ++i) {
+        int n = group[i];
+        tv[n].swap(old_v[i]); tp[n].swap(old_p[i]); delay[n] = old_d[i];
+        place(n);
+      }
+    }
+    if (verbose_) std::cerr << "lns moves " << moves_ << " accepted " << lns_accepted_ << " total " << total_ << "\n";
+  }
+
   long long total() const { return total_; }
   long long moves() const { return moves_; }
   int neg_iters() const { return neg_iters_; }
@@ -290,6 +367,11 @@ class Router {
   long long total_ = 0;
   // parameters and counters
   double pf0_, pf_mult_, hist_fac_, esc1_, esc2_;
+  int lns_, lns_k_, lns_order_;
+  long long lns_accepted_ = 0;
+  // congestion-free tree per net (only other nets' pins blocked) and its delay
+  std::vector<std::vector<int>> ideal_v;
+  std::vector<long long> ideal_d;
   long long max_moves_;
   int verbose_;
   long long moves_ = 0;
@@ -318,9 +400,8 @@ class Router {
   void place(int n) { for (int v : tv[n]) owner[v] = n; }
 
   // Build net n's tree from pred[] of the last search (stamp_), computing true delays.
-  void build_tree(int n) {
-    auto& V = tv[n];
-    auto& P = tp[n];
+  void build_tree(int n) { delay[n] = build_tree_into(n, tv[n], tp[n]); }
+  long long build_tree_into(int n, std::vector<int>& V, std::vector<int>& P) {
     V.clear(); P.clear();
     int d = in_.drv[n];
     V.push_back(d); P.push_back(-1);
@@ -341,10 +422,11 @@ class Router {
       }
       sum += dly[s];
     }
-    delay[n] = sum;
+    return sum;
   }
 
   // Exact shortest-path tree for net n over vertices free or owned by n (bucket queue).
+  template <bool FreeOnly = false>
   bool route_exact(int n) {
     ++stamp_;
     int remaining = 0;
@@ -364,7 +446,7 @@ class Router {
         done[v] = stamp_;
         if (target[v] == stamp_ && --remaining == 0) break;
         for_nb(v, [&](int u, int c) {
-          int o = owner[u];
+          int o = FreeOnly ? pin_net[u] : owner[u];
           if (o >= 0 && o != n) return;
           int nd = cur + c;
           if (seen[u] != stamp_ || nd < dist[u]) {
@@ -380,7 +462,7 @@ class Router {
     }
     for (auto& b : buckets) b.clear();
     if (remaining > 0) return false;
-    build_tree(n);
+    if (!FreeOnly) build_tree(n);
     return true;
   }
 
@@ -476,6 +558,7 @@ int main(int argc, char** argv) {
   }
   auto t_legal = Clock::now();
   r.refine();
+  r.lns();
   r.write(out_path);
   double secs = std::chrono::duration<double>(Clock::now() - t0).count();
   double ref_secs = std::chrono::duration<double>(Clock::now() - t_legal).count();
