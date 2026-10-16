@@ -158,6 +158,7 @@ class Router {
     lns_gamma_ = opt.get("lns_gamma", 0.01);
     // Idea 1: negotiated trees grow one sink at a time; points already in the net's tree start
     // at their true delay and pay no congestion again, so a shared trunk is charged once.
+    // 1 = everywhere, 2 = initial negotiation only (group moves keep shortest-path trees).
     tree_seq_ = static_cast<int>(opt.get_int("tree_seq", 0));
     // Idea 2: exact reroutes keep every sink's shortest delay but pick, among equally fast
     // routes, the one adding the fewest new points (a fast-layer point counts 1 + tie_mid).
@@ -869,7 +870,7 @@ class Router {
   // into v costs (delay + hist[v]) * (1 + pf * occ[v]).
   template <bool Group = false>
   bool route_neg(int n, double pf) {
-    if (tree_seq_ && in_.sinks[n].size() > 1) return route_neg_seq<Group>(n, pf);
+    if ((tree_seq_ == 1 || (tree_seq_ == 2 && !Group)) && in_.sinks[n].size() > 1) return route_neg_seq<Group>(n, pf);
     if (astar_ && in_.sinks[n].size() == 1) return route_neg_astar<Group>(n, pf);
     ++stamp_;
     int remaining = 0;
