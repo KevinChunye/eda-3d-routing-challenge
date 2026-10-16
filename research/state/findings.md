@@ -64,3 +64,21 @@ cost as heuristic, windowed search, early exit) and integer costs (bucket queue)
 **Leaderboard context.** Top hard aggregate 1.4136 (best per-case mix of public routes).
 Entries without runtime.json become unranked once maintainers enforce the 2026-10-15 rule;
 then the best ranked hard entry is 1.3019 (iamparv7043, 7,333 s).
+
+## 2026-10-16 — v0 router (exp-000) loss profile
+
+v0 = C++ PathFinder negotiation (present-cost factor starts 0.2, ×1.03 per round, history
++0.1 per overuse) then exact per-net shortest-path-tree reroute sweeps. Dev @30 s: hard
+1.178, congested 1.118, designs 1.262; legal 33/33; it stops after 1.5–14 s because A2
+converges, so most of the budget is unused.
+- Present-cost growth is the main v0 knob: ×1.7 (reference value) gave hard 1.048, ×1.15
+  1.131, ×1.05 1.169, ×1.02 1.200 (self-reported, seed 1). Slow growth lets nets negotiate
+  for the middle layers on true delay instead of being pushed out by penalties. ×1.03 plus a
+  time-based escalation (×1.7 past 35% of budget, ×3 past 60%) keeps designs legal in 14 s.
+- Loss profile vs best public (`gap_decompose.py`): v0 is 49.8% over ideal on hard (public
+  24.8%); slow-layer share 74% (public 72%), detour 20% (23%), via 6% (6%). Same shape, twice
+  the size: v0 loses where the public entries lose, just more, so the allocation search
+  (B1) is the lever, not a different cost model.
+- Single-sink nets are 70% over ideal on hard (public 66%); 5–8-sink nets 36%. Medium
+  distance sinks (11–20 steps) 83% over ideal.
+- Middle layers 85–88% used on hard and congested, 73–75% on designs.

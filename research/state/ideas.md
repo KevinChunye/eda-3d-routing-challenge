@@ -8,13 +8,13 @@ Expected effects for router ideas are on the hard-tier dev aggregate (baseline =
 
 ## Phase A — a correct, fast incumbent (01_build_v0 covers A1–A2)
 
-- **A1 · C++ negotiated router to legality** — status: open
+- **A1 · C++ negotiated router to legality** — status: adopted (exp-000, legal 33/33; hard 1.178 with A2)
   - Evidence: reference `m3d/negotiated.py` scores 1.00 on hard in 85 s (Python).
   - Mechanism: PathFinder costs (present + history) on grid points; per-net shortest-path
     tree; reroute only nets on overused points.
   - Expect: legal 9/9 hard, aggregate ≈ 1.00, ≥ 20× faster than the Python reference.
   - Cost: M. Falsify: any illegal case, or slower than the Python reference.
-- **A2 · Exact per-net reroute after legality** — status: open
+- **A2 · Exact per-net reroute after legality** — status: adopted (exp-000, hard 1.178 ≥ 1.15 target)
   - Evidence: negotiated_delay entry went 1.00 → 1.15 for +20 s.
   - Mechanism: rip one net, route its true-delay shortest-path tree with all others fixed,
     keep if its delay drops; sweep nets until a full pass finds nothing.

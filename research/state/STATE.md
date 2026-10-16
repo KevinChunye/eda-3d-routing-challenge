@@ -4,7 +4,7 @@ Read this first in every session; update it last. Keep it short: it is the hando
 between sessions on possibly different machines.
 
 ## Next action
-Run `research/prompts/01_build_v0.md` (router/ does not exist yet).
+Run `research/prompts/10_iterate.md` (top idea: B1 excess-targeted neighborhood search).
 
 ## Entry config (used by 40_submit; Kevin may edit)
 - entry_name: `kevin_toll_lns` (one directory per distinct method; rename if the method changes)
@@ -22,7 +22,11 @@ Run `research/prompts/01_build_v0.md` (router/ does not exist yet).
 - incumbent run cache: `research/runs/incumbent/` (gitignored; rebuild on a new machine)
 
 ## Incumbent
-- none yet (Phase A)
+- exp-000 (v0, A1+A2), router sha 5dcb597, flags: none (defaults: neg_pres0=0.2,
+  neg_pres_mult=1.03, neg_hist=0.1, escalation at 35%/60% of budget)
+- dev aggregate @30 s, seeds 1-3: hard 1.1780 · congested 1.1179 · designs 1.2621
+- gap to best bound: hard 38.0% · congested 37.7% · designs 40.1%; vs best public +19.9% / +21.7% / +18.4%
+- v0 stops early (A2 converges): legal in 1.5-13 s, total ≤ 14 s per dev case
 
 ## Machine log
 - (00_bootstrap appends: date, CPU model, logical CPUs, RAM, dial_bench µs/search)
