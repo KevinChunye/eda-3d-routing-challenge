@@ -82,3 +82,16 @@ converges, so most of the budget is unused.
 - Single-sink nets are 70% over ideal on hard (public 66%); 5–8-sink nets 36%. Medium
   distance sinks (11–20 steps) 83% over ideal.
 - Middle layers 85–88% used on hard and congested, 73–75% on designs.
+
+## 2026-10-16 — LNS saturates; group negotiation helps, at a speed cost (exp-001..003)
+
+- exp-001 LNS (group of 4 = a high-excess net + nets on its congestion-free tree, exact
+  reroute in random order, accept if not worse): hard 1.178 → 1.270. It saturates: the same
+  config at 90 s/case scores 1.2739 vs 1.2716 at 30 s (seed 1, hard). Moves are cheap
+  (~5.9k/s on hard) but almost never accepted, so search speed (C1) alone is worth little.
+- exp-002 annealed acceptance (B6): +0.15% mean r, inconclusive; predicted +2% (missed by
+  >2×): accepting worse *greedy* reroutes does not lead anywhere new; the move generator
+  cannot produce coordinated swaps.
+- exp-003 group negotiation (B8): hard +2.2%, but congested −3.2%, designs −2.5%. Moves/s fell
+  15× (heap search over the whole grid per net per round); on 64×64+ grids the initial
+  negotiation already takes 12–13 s of the 30 s. Next lever: windowed (local) searches.

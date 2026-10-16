@@ -49,9 +49,14 @@ Expected effects for router ideas are on the hard-tier dev aggregate (baseline =
   - Mechanism: let multi-sink nets trade a little sink delay for fewer middle-layer points
     (Prim–Dijkstra / shallow-light trade-off), freeing room for small nets.
   - Expect: designs +3–6%, hard +1–3%. Cost: M. Falsify: no gain on designs.
-- **B6 · Acceptance that escapes local optima** — status: open — priority: medium
+- **B6 · Acceptance that escapes local optima** — status: inconclusive (exp-002, mean r +0.15%, 6/11; code kept behind sa_t0, off)
   - Mechanism: threshold or annealed acceptance in B1 (accept small worsening early).
   - Expect: +1–3% at long budgets. Cost: S. Falsify: no gain at 120 s/case.
+- **B8 · Negotiated group repair inside LNS** — status: adopted (exp-003, mean r +1.30%; hard +2.2%, congested/designs worse from 15x fewer moves/s)
+  - Evidence: exp-001 LNS saturates (90 s vs 30 s: +0.2%); public method lines (lns_negotiated,
+    warm_lns_refinement, reubalink) all negotiate inside the ripped group.
+  - Mechanism: up to 6 PathFinder rounds among the ripped group with all other nets fixed;
+    overlap-free result is polished by exact per-net reroutes; else sequential exact.
 - **B7 · Exact repair of small groups** — status: open — priority: low
   - Mechanism: for 2–4 nets in a window, solve exactly (conflict-based search or a small
     MIP with OR-Tools CP-SAT / HiGHS).

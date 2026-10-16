@@ -22,10 +22,11 @@ Run `research/prompts/10_iterate.md` (continue the cycle list; see ideas.md).
 - incumbent run cache: `research/runs/incumbent/` (gitignored; rebuild on a new machine)
 
 ## Incumbent
-- exp-001 (v0 + B1 LNS), router sha 94fa6c0, flags: `--set lns=1` (lns_k=4, random order)
-- dev aggregate @30 s, seeds 1-3: hard 1.2696 · congested 1.2075 · designs 1.3203
-- gap to best bound: hard 28.0% · congested 27.5% · designs 33.9%; vs best public +11.2% / +12.6% / +13.2%
-- change vs exp-000: mean r +7.24%, 11/11 cases better
+- exp-003 (v0 + B1 LNS + B8 group negotiation), router sha e8e6d4b, flags:
+  `--set lns=1 --set gneg=6 --set lns_k=6`
+- dev aggregate @30 s, seeds 1-3: hard 1.2982 · congested 1.1694 · designs 1.2871
+- gap to best bound: hard 25.5% · congested 31.6% · designs 37.3%; vs best public +9.1% / +16.3% / +16.1%
+- change vs exp-001: mean r +1.30% (hard +2.2%, congested -3.2%, designs -2.5%: 15x fewer moves/s)
 
 ## Machine log
 - (00_bootstrap appends: date, CPU model, logical CPUs, RAM, dial_bench µs/search)
