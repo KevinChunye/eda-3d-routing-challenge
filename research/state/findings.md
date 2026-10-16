@@ -174,3 +174,38 @@ sink). 60 s → 300 s gives only 1.0–1.7% on hard case_01/05/09.
 - Idea 4 is a large-grid win (congested +1.8%, designs +2.1%) and mixed on hard; worth a
   tier-aware retest.
 - Ideas 3, 4 and 5 are independent; their combination is untested.
+
+## 2026-10-16 — how the top entries work, and where our search runs out
+
+**Leaderboard methods** (meta.json method lines, write-ups in `submissions/*/*/README.md`,
+the public README of spt_lns; no code copied).
+- The two leaders do not disclose their methods: leonid-popryho ("own router") and
+  cuda-have-been-shorter ("GPU-accelerated routing engine"). coordinated_refinement (#1) is a
+  best-per-case mix of their routes plus "exact A* and bounded group refinement", which gained
+  only a handful of delay units over them. warm_lns_refinement refining pathfinder_lns's
+  routes gained +2 delay on one case. The best public routes are deep local optima for this
+  whole method family.
+- spt_lns (1.397, open): our exact family (SPT nets, slow fanout-scaled PathFinder, exact
+  per-net refinement, annealed LNS with ideal-tree and window moves). Differences: groups up
+  to 12 nets and up to 60 negotiation rounds, sequential vs negotiated rebuild mixed 50/50,
+  and scale: overnight workers warm-starting from the best file on disk, occasional restarts
+  from scratch, ~300 thread-hours in total (runtime not reported).
+- pathfinder_lns reports 61,369 s (congested) and 47,268 s (designs); iamparv7043 7,333 s
+  (hard). Our v2 uses 531 s on hard.
+
+**Where our search runs out** (hard case_02/05/08, 60 s, 1 thread, verbose counters).
+- Improving moves are rare: 0.9–5.4% of moves lower the delay; 40–54% are accepted, almost
+  all as equal-delay plateau moves. A move costs 3–8 ms. Group negotiation ends illegal in
+  3–21% of moves (then sequential exact rebuild).
+- Bug: the adaptive move selector never adapted. Weights (delay per microsecond, ~1e-5) sat
+  at the absolute floor 1e-4, so the choice stayed 50/50 although window moves improve more
+  often (1.4–5.4% vs 0.9–4.1%) and cost less per move.
+- Seed spread is small: max-min over 3 seeds 0.8% of delay, best-of-3 only 0.34% better than
+  the mean. Restarts cannot close a 6% gap; the search converges to the same level.
+- Same-die sinks are 1,316 of 1,709 hard sinks and carry most of the gap to leonid-popryho
+  (+6,972 of +8,496 extra delay vs v2): mostly slow-layer (+4,680) and detour (+2,052)
+  steps on 21–40-step sinks (34% vs 26% over their congestion-free delay).
+
+**Forecast calibration so far.** Ideas 1–5 delivered about 30–40% of the predicted gain;
+compute ideas (threads, longer budget) came closest, structural tree-shape ideas (1, 2) missed
+almost entirely. Predictions from exp-013 on are shrunk accordingly.
