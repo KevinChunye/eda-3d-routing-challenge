@@ -22,7 +22,7 @@ Expected effects for router ideas are on the hard-tier dev aggregate (baseline =
 
 ## Phase B — the allocation search (where the score is)
 
-- **B1 · Excess-targeted neighborhood search** — status: open — priority: high
+- **B1 · Excess-targeted neighborhood search** — status: adopted (exp-001, mean r +7.2%; hard 1.270)
   - Evidence: 17% of hard sinks carry 50% of excess; slow-layer loss is 72% of it.
   - Mechanism: pick a sink with large excess; rip up its net plus the nets occupying the
     middle-layer points its ideal path needs; reroute the group in random orders (with
