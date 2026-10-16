@@ -131,9 +131,14 @@ class Router {
     // (everything else fixed); if the group ends overlap-free, polish each net with an exact
     // reroute; otherwise fall back to sequential exact routing.
     gneg_ = static_cast<int>(opt.get_int("gneg", 0));
+    // C1: LNS searches stay inside the group's old-tree bounding box expanded by lns_win
+    // (-1 = whole grid). The old trees fit inside, so a move can always restore them.
+    lns_win_ = static_cast<int>(opt.get_int("lns_win", -1));
     gneg_pf0_ = opt.get("gneg_pf0", 0.5);
     gneg_mult_ = opt.get("gneg_mult", 2.0);
     gneg_hist_ = opt.get("gneg_hist", 0.5);
+    // after the first round, reroute only group nets that touch an overused point
+    gneg_sel_ = static_cast<int>(opt.get_int("gneg_sel", 0));
     verbose_ = opt.get_int("verbose", 0);
 
     X.resize(N); Y.resize(N); Z.resize(N);
@@ -314,6 +319,16 @@ class Router {
         old_sum += delay[n];
         rip(n);
       }
+      if (lns_win_ >= 0) {
+        wx0_ = W; wx1_ = -1; wy0_ = H; wy1_ = -1;
+        for (size_t i = 0; i < group.size(); ++i)
+          for (int v : old_v[i]) {
+            wx0_ = std::min<int>(wx0_, X[v]); wx1_ = std::max<int>(wx1_, X[v]);
+            wy0_ = std::min<int>(wy0_, Y[v]); wy1_ = std::max<int>(wy1_, Y[v]);
+          }
+        wx0_ = std::max(0, wx0_ - lns_win_); wx1_ = std::min(W - 1, wx1_ + lns_win_);
+        wy0_ = std::max(0, wy0_ - lns_win_); wy1_ = std::min(H - 1, wy1_ + lns_win_);
+      }
       long long new_sum = 0;
       size_t routed = 0;
       if (gneg_ > 0 && group_negotiate(group)) {
@@ -334,6 +349,7 @@ class Router {
         }
       }
       ++moves_;
+      wx0_ = 0; wx1_ = 1 << 30; wy0_ = 0; wy1_ = 1 << 30;
       if (routed == group.size() &&
           (new_sum <= old_sum || (sa_t0_ > 0 && unif(rng_) < std::exp(-(new_sum - old_sum) / temp)))) {
         total_ += new_sum - old_sum;
@@ -367,21 +383,27 @@ class Router {
   bool group_negotiate(const std::vector<int>& group) {
     double pf = gneg_pf0_;
     bool ok = true, legal = false;
+    gaff_.assign(group.size(), 1);
     for (int round = 0; round < gneg_ && ok; ++round) {
-      for (int n : group) {
+      for (size_t i = 0; i < group.size(); ++i) {
+        int n = group[i];
+        if (round > 0 && gneg_sel_ && !gaff_[i]) continue;
         if (round > 0) sub_occ(n);
         if (!route_neg<true>(n, pf)) { ok = false; break; }
         add_occ(n);
       }
       if (!ok) break;
       bool over = false;
-      for (int n : group)
-        for (int v : tv[n])
+      for (size_t i = 0; i < group.size(); ++i) {
+        gaff_[i] = 0;
+        for (int v : tv[group[i]])
           if (occ[v] > 1) {
             over = true;
+            gaff_[i] = 1;
             if (hist[v] == 0.0) touched_.push_back(v);
             hist[v] += gneg_hist_;
           }
+      }
       if (!over) { legal = true; break; }
       pf *= gneg_mult_;
     }
@@ -455,7 +477,9 @@ class Router {
   double pf0_, pf_mult_, hist_fac_, esc1_, esc2_;
   int lns_, lns_k_, lns_order_;
   double sa_t0_, sa_t1_;
-  int gneg_;
+  int gneg_, lns_win_, gneg_sel_;
+  std::vector<char> gaff_;
+  int wx0_ = 0, wx1_ = 1 << 30, wy0_ = 0, wy1_ = 1 << 30;  // search window (inclusive)
   double gneg_pf0_, gneg_mult_, gneg_hist_;
   std::vector<int> touched_;
   long long lns_accepted_ = 0;
@@ -538,6 +562,7 @@ class Router {
         for_nb(v, [&](int u, int c) {
           int o = FreeOnly ? pin_net[u] : owner[u];
           if (o >= 0 && o != n) return;
+          if (X[u] < wx0_ || X[u] > wx1_ || Y[u] < wy0_ || Y[u] > wy1_) return;
           int nd = cur + c;
           if (seen[u] != stamp_ || nd < dist[u]) {
             seen[u] = stamp_;
@@ -579,6 +604,7 @@ class Router {
       for_nb(v, [&](int u, int c) {
         int pn = Group ? owner[u] : pin_net[u];
         if (pn >= 0 && pn != n) return;
+        if (X[u] < wx0_ || X[u] > wx1_ || Y[u] < wy0_ || Y[u] > wy1_) return;
         double nd = dv + (c + hist[u]) * (1.0 + pf * occ[u]);
         if (seen[u] != stamp_ || nd < fdist[u]) {
           seen[u] = stamp_;
