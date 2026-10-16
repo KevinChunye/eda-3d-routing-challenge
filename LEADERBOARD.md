@@ -44,7 +44,7 @@ do not edit it by hand.
 | 5 | pathfinder_lns | Tazeem Mahashin | 1.3884 | 9/9 | 144991 | missing |  | — |
 | 6 | warm_lns_refinement † | kesudh | 1.3874 | 9/9 | 145095 | missing |  | — |
 | 7 | reubalink | reubalink | 1.3622 | 9/9 | 147825 | missing |  | — |
-| 8 | Jiangbanya | Kevin Wang (KevinChunye) | 1.3303 | 9/9 | 151747 | 531.07 | ✓ | — |
+| 8 | Jiangbanya | Kevin Wang (KevinChunye) | 1.3368 | 9/9 | 150909 | 531.10 | ✓ | — |
 | 9 | iamparv7043 | Parv (iamparv7043) | 1.3019 | 9/9 | 155125 | 7333.40 |  | — |
 | 10 | erikqu_root_aware_portfolio | erikqu | 1.2745 | 9/9 | 158455 | missing |  | — |
 | 11 | synapse-surge | Sameer-Deepak | 1.2569 | 9/9 | 161183 | missing |  | — |
@@ -102,7 +102,7 @@ do not edit it by hand.
 | 4 | spt_lns | James (IrwinJam) | 1.3156 | 4/4 | 489177 | missing |  | — |
 | 5 | pathfinder_lns | Tazeem Mahashin | 1.3111 | 4/4 | 490499 | 61369.30 | ✓ | — |
 | 6 | warm_lns_refinement † | kesudh | 1.3085 | 4/4 | 491467 | 3621.00 | ✓ | — |
-| 7 | Jiangbanya | Kevin Wang (KevinChunye) | 1.2367 | 4/4 | 524333 | 1196.21 | ✓ | — |
+| 7 | Jiangbanya | Kevin Wang (KevinChunye) | 1.2490 | 4/4 | 518395 | 1196.49 | ✓ | — |
 | 8 | iamparv7043 | Parv (iamparv7043) | 1.1252 | 4/4 | 591707 | 4593.60 |  | — |
 | 9 | lns_negotiated | adityuhkapoor | 1.0981 | 4/4 | 590513 | missing |  | — |
 | 10 | shivaahir158 | Shiva Ahir (PhD Candidate, Stony Brook University) | 1.0549 | 4/4 | 608243 | 8756.73 |  | — |
@@ -120,7 +120,7 @@ do not edit it by hand.
 | 4 | pathfinder_lns | Tazeem Mahashin | 1.4354 | 3/3 | 209175 | 47267.61 | ✓ | — |
 | 5 | spt_lns | James (IrwinJam) | 1.4347 | 3/3 | 209415 | missing |  | — |
 | 6 | warm_lns_refinement † | kesudh | 1.4331 | 3/3 | 209509 | 3615.00 | ✓ | — |
-| 7 | Jiangbanya | Kevin Wang (KevinChunye) | 1.3685 | 3/3 | 219751 | 897.11 | ✓ | — |
+| 7 | Jiangbanya | Kevin Wang (KevinChunye) | 1.3744 | 3/3 | 218717 | 897.21 | ✓ | — |
 | 8 | iamparv7043 | Parv (iamparv7043) | 1.3276 | 3/3 | 226581 | 1309.30 |  | — |
 | 9 | lns_negotiated | adityuhkapoor | 1.2533 | 3/3 | 240751 | missing |  | — |
 | 10 | anvesh | anvesh | 1.2520 | 3/3 | 240501 | missing |  | — |
