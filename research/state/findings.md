@@ -95,3 +95,27 @@ converges, so most of the budget is unused.
 - exp-003 group negotiation (B8): hard +2.2%, but congested −3.2%, designs −2.5%. Moves/s fell
   15× (heap search over the whole grid per net per round); on 64×64+ grids the initial
   negotiation already takes 12–13 s of the 30 s. Next lever: windowed (local) searches.
+
+## 2026-10-16 — explore after 5 cycles (incumbent exp-005)
+
+- **Where the loss is.** Hard 35.1% over ideal (public 24.8%): slow layer 70%, detour 24%,
+  via 6%. Congested 36.1% (64/21/15), designs 34.9% (75/8/17). "Ideal" = each sink's
+  cheapest path with no other nets present.
+- **Who carries it.** After fanout weighting (B2) the loss moved to small nets: on hard,
+  single-sink nets are 82% over ideal and carry 43.7% of the excess (25% of sinks); 5–8-sink
+  nets 16.9%. Designs: single-sink 55.9% over ideal, 9+-sink nets 10.8%. Medium-distance
+  sinks (11–20 steps) on hard 75% over ideal.
+- **Largest gaps to bound** (bound = best certified lower bound): designs ctrl 32.2%, hard
+  case_02 30.6%, hard case_07 29.7%. Vs best public: congested +12.7%, designs +11.8%, hard
+  +8.3% (case_08 +10.9%).
+- **What experiments taught.** Gains come from changing *how a group is rerouted* (B1 +7.2%,
+  B8 +1.3%) and *who yields* (B2 +1.4%); accepting worse states (B6 +0.15%) and windowing
+  (C1 +0.43%) do little. Budget barely matters with the current moves (3× budget +0.2%).
+  Predictions: 2 of 5 met, B1 and B6/C1 over-optimistic (B6 by 13×).
+- **Outside.** upstream/main unchanged since the fork point.
+- **Literature.** MAPF-LNS (Li et al., IJCAI 2021) mixes three destroy heuristics with
+  adaptive roulette weights; BALANCE (arXiv 2312.16767) adapts heuristic and neighborhood
+  size by bandits. Source for E1.
+- **Next three.** E1 adaptive neighborhood portfolio (attacks saturation directly), E2
+  cheaper group negotiation (B8's 15× move-rate loss), B5 compact big-net trees (evidence:
+  big nets near ideal, single-sink nets far from it).

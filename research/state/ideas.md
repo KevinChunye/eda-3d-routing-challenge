@@ -44,7 +44,7 @@ Expected effects for router ideas are on the hard-tier dev aggregate (baseline =
   - Mechanism: among equal-delay paths, prefer the one using fewer free middle-layer points
     or points other nets' ideal paths want (leave room for others).
   - Expect: +1–3%. Cost: S. Falsify: no gain.
-- **B5 · Compact trees for big nets** — status: open — priority: medium
+- **B5 · Compact trees for big nets** — status: open — priority: medium-high (explore 2026-10-16: designs 9+-sink nets 10.8% over ideal vs single-sink 55.9%; hard single-sink nets carry 43.7% of excess)
   - Evidence: designs' 9+-sink nets sit 2.9% over ideal while single-sink nets sit 46% over.
   - Mechanism: let multi-sink nets trade a little sink delay for fewer middle-layer points
     (Prim–Dijkstra / shallow-light trade-off), freeing room for small nets.
@@ -61,6 +61,31 @@ Expected effects for router ideas are on the hard-tier dev aggregate (baseline =
   - Mechanism: for 2–4 nets in a window, solve exactly (conflict-based search or a small
     MIP with OR-Tools CP-SAT / HiGHS).
   - Expect: small, late-stage. Cost: L.
+
+## Explore 2026-10-16 additions (ranked; see findings memo of the same date)
+
+- **E1 · Adaptive neighborhood portfolio** — status: open — priority: high
+  - Evidence: B1 alone saturates (90 s vs 30 s +0.2%); MAPF-LNS (Li et al., IJCAI 2021) mixes
+    random, agent-based (blocker random walk) and map-based (junction) destroy heuristics
+    with roulette weights; BALANCE (arXiv 2312.16767) also adapts neighborhood size.
+  - Mechanism: add a window neighborhood (all nets with tree points in a random box around a
+    random high-excess sink) next to B1's ideal-tree blockers; choose by roulette weights
+    updated with delay gained per second; sizes k in {4, 6, 8}.
+  - Expect: +1–2% mean r. Cost: M. Falsify: < +0.5% vs B1 alone at 30 s.
+- **E2 · Cheaper group negotiation** — status: open — priority: high
+  - Evidence: B8 cut LNS moves/s 15× (hard 5.9k → 0.39k; congested 0.11k/s); every round
+    reroutes every group net with a heap search.
+  - Mechanism: (a) after round 1 reroute only group nets touching an overused point
+    (`gneg_sel`, implemented, off); (b) integer costs + bucket queue for the negotiated search.
+  - Expect: 2× moves/s, +0.5–1% mean r. Cost: S (a), M (b). Falsify: < 1.5× moves/s.
+- **E3 · Faster legality on large grids** — status: open — priority: medium
+  - Evidence: congested/designs at 30 s spend 12–13 s (40%) reaching legality; escalation
+    fires at 35% of budget.
+  - Mechanism: start present-cost growth faster on large grids by a size-free rule (e.g.
+    escalate when overuse stops falling for R rounds), or window each net's negotiated search
+    to its pin bounding box + margin.
+  - Expect: +1–2% congested/designs at 30 s; ~0 on hard. Cost: S–M. Falsify: legal time not
+    halved.
 
 ## Phase C — speed (multiplies Phase B)
 
