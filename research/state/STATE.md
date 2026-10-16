@@ -4,7 +4,7 @@ Read this first in every session; update it last. Keep it short: it is the hando
 between sessions on possibly different machines.
 
 ## Next action
-Run `research/prompts/00_bootstrap.md` on the VM, then `01_build_v0.md`.
+Run `research/prompts/01_build_v0.md` (router/ does not exist yet).
 
 ## Entry config (used by 40_submit; Kevin may edit)
 - entry_name: `kevin_toll_lns` (one directory per distinct method; rename if the method changes)
@@ -26,6 +26,7 @@ Run `research/prompts/00_bootstrap.md` on the VM, then `01_build_v0.md`.
 
 ## Machine log
 - (00_bootstrap appends: date, CPU model, logical CPUs, RAM, dial_bench µs/search)
+- 2026-10-16 · claude-code cloud VM · Intel Xeon @ 2.10GHz · 4 logical CPUs · 15 GB RAM · dial_bench 40×40×6: 138 µs, 105×105×6: 600 µs
 
 ## Submitted
 - nothing yet
