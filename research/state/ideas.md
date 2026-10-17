@@ -129,3 +129,29 @@ fresh base where available.
 
 Next (from the calibration lesson, search-dynamics first): adaptive depth (deep moves after
 stagnation), path relinking between thread-best solutions, P7, then P10.
+
+## v4 levers, 2026-10-17 (Kevin's brief: accept worse steps, explore early / exploit late,
+## discounted credit, tune at long budgets)
+
+Measured vs fresh v3 (r = log(v3 delay / candidate delay)):
+
+| lever | standard name | best setting | measured | status |
+|---|---|---|---:|---|
+| accept worse steps | threshold accepting | threshold 32, linear decay to 0 | +0.7–0.9% (1 thread, 300 s) | adopted (hard, congested) |
+| " | late acceptance | history 500–2,000 | −4% (30 s) | rejected |
+| " | record-to-record travel | 0.1–0.3% band | +0.18–0.25% (30 s) | dropped |
+| " | simulated annealing | T0 10 | −0.45% vs threshold 16 (600 s) | dropped |
+| schedule shape | cooling exponent, reheats | linear | pow 2/0.5, 3 reheats no better | rejected |
+| scale-free schedule | rate-controlled threshold (modified Lam) | 25% → 0 | +0.02% (designs 1,800 s) | inconclusive |
+| move choice | discounted Thompson bandit with a random arm | γ 0.995 | +0.25% alone (30 s); in all v4 runs | adopted |
+| bandit memory | discount γ | 0.99 / 0.999 | no better than 0.995 | rejected |
+| water-filling demand | pressure shaping | g 0.1–0.3 | noise | dropped |
+| threads | sync every budget/5 (not 10 s) | 60 s at 300 s | +0.28% over 10 s | adopted |
+| threads | per-thread thresholds 16/32/48/64 | — | −0.08% | rejected |
+| budget | longer per case | hard 600 s, congested/designs 1,800 s | designs +1.2–1.4% (v3 settings) | adopted |
+
+Open, from these results: designs never profits from exploration within 1,800 s (it only
+catches up); a size-aware threshold (scaled by expected moves per net) or a longer
+designs budget would test whether the crossover comes later. Structural levers (P7
+same-die long-sink moves, P10 exact window repair, path relinking between thread bests)
+remain untested and are what the 2–3% target needs.
