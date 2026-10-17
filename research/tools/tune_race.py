@@ -56,6 +56,8 @@ def main():
     ap.add_argument("--configs", required=True)
     ap.add_argument("--budget", type=float, default=30)
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--keep", type=int, nargs="+", default=KEEP,
+                    help="survivors after each stage; fewer entries run fewer stages")
     ap.add_argument("--exp-id", help="append a result row to experiments.jsonl")
     args = ap.parse_args()
 
@@ -63,7 +65,7 @@ def main():
     alive = list(configs)
     root = os.path.join(RUNS, args.label)
     rows = []
-    for stage, (pairs, keep) in enumerate(zip(STAGES, KEEP), start=1):
+    for stage, (pairs, keep) in enumerate(zip(STAGES, args.keep), start=1):
         jobs = []
         for name in ["REF"] + alive:
             flags = args.base + ("" if name == "REF" else " " + configs[name])

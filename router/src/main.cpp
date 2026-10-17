@@ -208,12 +208,24 @@ class Router {
     // the net's excess / tree size (recomputed every shape_every moves).
     shape_g_ = opt.get("shape_g", 0.0);
     shape_every_ = static_cast<int>(opt.get_int("shape_every", 500));
+    // v4 threshold schedule shape: thr = ta_t0 x (1 - c)^ta_pow, c = fraction of the current
+    // cycle (ta_cycles equal cycles over the run; c = run fraction when ta_cycles = 1); with
+    // ta_env = 1 the cycle peak also falls linearly over the run. ta_list = comma-separated
+    // ta_t0 per thread (thread i takes entry i mod length), so threads search at different
+    // "temperatures" and every par_sync seconds all adopt the best.
+    ta_pow_ = opt.get("ta_pow", 1.0);
+    ta_cycles_ = static_cast<int>(opt.get_int("ta_cycles", 1));
+    ta_env_ = static_cast<int>(opt.get_int("ta_env", 0));
+    ta_list_ = opt.get_str("ta_list", "");
     verbose_ = opt.get_int("verbose", 0);
     // Diagnostics only (off by default): write the current routes to snap_dir/snap_NNNN.sol.json
     // every snap_neg negotiation rounds, after each A2 sweep and every snap_s seconds of LNS,
     // with one line per snapshot in snap_dir/index.jsonl. Used for animations.
     snap_dir_ = opt.get_str("snap_dir", "");
     snap_s_ = opt.get("snap_s", 1.0);
+    // Diagnostics: every trace_s seconds of LNS print "TRACE <s since start> <current total>
+    // <best total> <threshold>" to stderr (main worker only).
+    trace_s_ = opt.get("trace_s", 0.0);
     snap_neg_ = static_cast<int>(opt.get_int("snap_neg", 5));
 
     X.resize(N); Y.resize(N); Z.resize(N);
@@ -382,10 +394,15 @@ class Router {
       if (now >= until || (max_moves_ >= 0 && moves_ >= max_moves_)) break;
       if (!snap_dir_.empty() && std::chrono::duration<double>(now - last_snap_).count() >= snap_s_)
         snapshot("search", 0);
+      if (trace_s_ > 0 && std::chrono::duration<double>(now - last_trace_).count() >= trace_s_) {
+        last_trace_ = now;
+        std::fprintf(stderr, "TRACE %.1f %lld %lld %.2f\n", std::chrono::duration<double>(now - start_).count(),
+                     total_, best_total_, thr_);
+      }
       if ((sa_t0_ > 0 || ta_t0_ > 0) && (moves_ & 63) == 0) {
         double frac = std::min(1.0, std::chrono::duration<double>(now - lns_start_).count() / lns_span_);
         if (sa_t0_ > 0) temp_ = sa_t0_ * std::pow(sa_t1_ / sa_t0_, frac);
-        if (ta_t0_ > 0) thr_ = ta_t0_ * (1.0 - frac);
+        if (ta_t0_ > 0) thr_ = ta_threshold(frac);
       }
       if (restore_after_ > 0 && track_best_ && since_best_ >= restore_after_ && total_ > best_total_) {
         restore_best();
@@ -567,6 +584,13 @@ class Router {
     return true;
   }
 
+  double ta_threshold(double frac) const {
+    if (ta_cycles_ <= 1 && ta_pow_ == 1.0 && !ta_env_) return ta_t0_ * (1.0 - frac);
+    double c = ta_cycles_ <= 1 ? frac : std::fmod(frac * ta_cycles_, 1.0);
+    double t = ta_t0_ * (ta_pow_ == 1.0 ? 1.0 - c : std::pow(1.0 - c, ta_pow_));
+    return ta_env_ ? t * (1.0 - frac) : t;
+  }
+
   void update_pressure() {
     std::fill(press_.begin(), press_.end(), 0.0);
     for (int n = 0; n < nn; ++n) {
@@ -616,7 +640,18 @@ class Router {
     since_best_ = 0; since_imp_ = 0;
   }
   void reseed(uint64_t s) { rng_.seed(s); }
-  void quiet() { snap_dir_.clear(); verbose_ = 0; }
+  // Per-thread threshold from ta_list (entry t mod length); no-op without ta_list.
+  void thread_ta(int t) {
+    std::vector<double> v;
+    std::stringstream ss(ta_list_);
+    for (std::string x; std::getline(ss, x, ',');)
+      if (!x.empty()) v.push_back(std::stod(x));
+    if (v.empty()) return;
+    ta_t0_ = v[static_cast<size_t>(t) % v.size()];
+    thr_ = ta_t0_;
+    if (!track_best_) { track_best_ = true; best_total_ = total_; best_v_ = tv; best_p_ = tp; best_d_ = delay; }
+  }
+  void quiet() { snap_dir_.clear(); verbose_ = 0; trace_s_ = 0.0; }
   void add_moves(long long m) { moves_ += m; }
   bool lns_enabled() const { return lns_ != 0; }
   double par_sync() const { return par_sync_; }
@@ -736,6 +771,9 @@ class Router {
   int sel_fix_, tie_rand_;
   int acc_, lahc_len_, bandit_, shape_every_;
   double rrt_d0_, bandit_decay_, shape_g_;
+  double ta_pow_;
+  int ta_cycles_, ta_env_;
+  std::string ta_list_;
   std::vector<long long> lahc_hist_;
   std::vector<double> press_;
   struct ArmStat { double s = 0, n = 0, t = 0; };
@@ -786,6 +824,8 @@ class Router {
   int snap_neg_;
   int snap_count_ = 0;
   Clock::time_point last_snap_{};
+  Clock::time_point last_trace_{};
+  double trace_s_ = 0.0;
 
   void snapshot(const char* phase, long long overused) {
     if (snap_dir_.empty()) return;
@@ -1192,12 +1232,14 @@ class Router {
 // seconds each ends on its best solution and all adopt the overall best.
 static void parallel_lns(Router& r, int T, uint64_t seed) {
   r.lns_setup();
+  r.thread_ta(0);
   std::vector<std::unique_ptr<Router>> extra;
   std::vector<Router*> all{&r};
   for (int t = 1; t < T; ++t) {
     extra.push_back(std::make_unique<Router>(r));
     extra.back()->reseed(seed * 1000003ULL + static_cast<uint64_t>(t));
     extra.back()->quiet();
+    extra.back()->thread_ta(t);
     all.push_back(extra.back().get());
   }
   std::vector<long long> base_moves;

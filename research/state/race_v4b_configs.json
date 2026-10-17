@@ -1,0 +1,34 @@
+[
+ {
+  "name": "ta16_b",
+  "flags": "--set ta_t0=16 --set bandit=1"
+ },
+ {
+  "name": "ta24_b",
+  "flags": "--set ta_t0=24 --set bandit=1"
+ },
+ {
+  "name": "ta32_b",
+  "flags": "--set ta_t0=32 --set bandit=1"
+ },
+ {
+  "name": "ta24_pow2_b",
+  "flags": "--set ta_t0=24 --set ta_pow=2 --set bandit=1"
+ },
+ {
+  "name": "ta16_pow05_b",
+  "flags": "--set ta_t0=16 --set ta_pow=0.5 --set bandit=1"
+ },
+ {
+  "name": "ta24_cyc3env_b",
+  "flags": "--set ta_t0=24 --set ta_cycles=3 --set ta_env=1 --set bandit=1"
+ },
+ {
+  "name": "ta16_bd990",
+  "flags": "--set ta_t0=16 --set bandit=1 --set bandit_decay=0.99"
+ },
+ {
+  "name": "ta16_bd999",
+  "flags": "--set ta_t0=16 --set bandit=1 --set bandit_decay=0.999"
+ }
+]
