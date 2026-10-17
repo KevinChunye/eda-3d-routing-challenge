@@ -1,0 +1,18 @@
+[
+ {"name": "ta4",            "flags": "--set ta_t0=4"},
+ {"name": "ta16",           "flags": "--set ta_t0=16"},
+ {"name": "sa4",            "flags": "--set ta_t0=0 --set sa_t0=4"},
+ {"name": "sa10",           "flags": "--set ta_t0=0 --set sa_t0=10"},
+ {"name": "lahc500",        "flags": "--set ta_t0=0 --set acc=1 --set lahc_len=500"},
+ {"name": "lahc2000",       "flags": "--set ta_t0=0 --set acc=1 --set lahc_len=2000"},
+ {"name": "rrt001",         "flags": "--set ta_t0=0 --set acc=2 --set rrt_d0=0.001"},
+ {"name": "rrt003",         "flags": "--set ta_t0=0 --set acc=2 --set rrt_d0=0.003"},
+ {"name": "bandit",         "flags": "--set bandit=1"},
+ {"name": "shape01",        "flags": "--set shape_g=0.1"},
+ {"name": "shape03",        "flags": "--set shape_g=0.3"},
+ {"name": "bandit_shape01", "flags": "--set bandit=1 --set shape_g=0.1"},
+ {"name": "lahc1000_bandit","flags": "--set ta_t0=0 --set acc=1 --set lahc_len=1000 --set bandit=1"},
+ {"name": "rrt002_bandit",  "flags": "--set ta_t0=0 --set acc=2 --set rrt_d0=0.002 --set bandit=1"},
+ {"name": "kick150",        "flags": "--set kick_after=150 --set restore_after=1000"},
+ {"name": "sa10_bandit",    "flags": "--set ta_t0=0 --set sa_t0=10 --set bandit=1"}
+]

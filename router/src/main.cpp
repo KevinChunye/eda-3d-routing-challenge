@@ -192,6 +192,22 @@ class Router {
     // P9: exact trees pick a uniformly random tight predecessor at every step (every sink keeps
     // its shortest delay), so equal-delay plateaus are explored instead of fixed.
     tie_rand_ = static_cast<int>(opt.get_int("tie_rand", 0));
+    // v4 acceptance rules (acc): 0 = as before (sa_t0 / ta_t0); 1 = late acceptance (accept if
+    // the new total is <= the total lahc_len moves ago); 2 = record-to-record travel (accept if
+    // the new total is <= best x (1 + rrt_d), rrt_d falling linearly from rrt_d0 to 0).
+    acc_ = static_cast<int>(opt.get_int("acc", 0));
+    lahc_len_ = static_cast<int>(opt.get_int("lahc_len", 1000));
+    rrt_d0_ = opt.get("rrt_d0", 0.002);
+    // v4 bandit: discounted Thompson sampling over five moves (ideal-tree k, window r, wide
+    // window r+2/k+2, ideal-tree k+2, random target with window r); value = sampled improve
+    // probability x moves per microsecond.
+    bandit_ = static_cast<int>(opt.get_int("bandit", 0));
+    bandit_decay_ = opt.get("bandit_decay", 0.995);
+    // v4 pressure shaping: accept a move whose delay change minus shape_g x (contested demand it
+    // frees) is <= 0. Demand on a point = sum over nets whose congestion-free tree uses it of
+    // the net's excess / tree size (recomputed every shape_every moves).
+    shape_g_ = opt.get("shape_g", 0.0);
+    shape_every_ = static_cast<int>(opt.get_int("shape_every", 500));
     verbose_ = opt.get_int("verbose", 0);
     // Diagnostics only (off by default): write the current routes to snap_dir/snap_NNNN.sol.json
     // every snap_neg negotiation rounds, after each A2 sweep and every snap_s seconds of LNS,
@@ -344,10 +360,12 @@ class Router {
     std::fill(occ.begin(), occ.end(), 0);
     std::fill(hist.begin(), hist.end(), 0.0);
     net_mark_.assign(nn, 0);
-    int kmax = std::max(lns_k_, kick_after_ > 0 ? kick_k_ : 0);
+    int kmax = std::max({lns_k_ + (bandit_ ? 2 : 0), kick_after_ > 0 ? kick_k_ : 0, lns_k_});
     old_v_.resize(kmax); old_p_.resize(kmax); old_d_.resize(kmax);
     cum_.resize(nn);
-    track_best_ = sa_t0_ > 0 || ta_t0_ > 0;
+    track_best_ = sa_t0_ > 0 || ta_t0_ > 0 || acc_ > 0 || shape_g_ > 0;
+    if (acc_ == 1) lahc_hist_.assign(std::max(1, lahc_len_), total_);
+    if (shape_g_ > 0) press_.assign(N, 0.0);
     best_total_ = total_;
     if (track_best_) { best_v_ = tv; best_p_ = tp; best_d_ = delay; }
     lns_start_ = Clock::now();
@@ -379,9 +397,25 @@ class Router {
         cum_[n] = acc;
       }
       if (acc <= 0) return false;
-      double r = std::uniform_real_distribution<double>(0.0, acc)(rng_);
-      int t = static_cast<int>(std::upper_bound(cum_.begin(), cum_.end(), r) - cum_.begin());
-      if (t >= nn) t = nn - 1;
+      int arm = -1;
+      if (bandit_) {
+        double bestv = -1;
+        for (int a = 0; a < 5; ++a) {
+          double x = std::gamma_distribution<double>(1.0 + arm_[a].s, 1.0)(rng_);
+          double y = std::gamma_distribution<double>(1.0 + arm_[a].n - arm_[a].s, 1.0)(rng_);
+          double v = x / (x + y) * (arm_[a].n + 1.0) / (arm_[a].t + 1000.0);
+          if (v > bestv) { bestv = v; arm = a; }
+        }
+      }
+      if (shape_g_ > 0 && (moves_ % shape_every_) == 0) update_pressure();
+      int t;
+      if (arm == 4) {
+        t = std::uniform_int_distribution<int>(0, nn - 1)(rng_);
+      } else {
+        double r = std::uniform_real_distribution<double>(0.0, acc)(rng_);
+        t = static_cast<int>(std::upper_bound(cum_.begin(), cum_.end(), r) - cum_.begin());
+        if (t >= nn) t = nn - 1;
+      }
       ++epoch_;
       net_mark_[t] = epoch_;
       cand_.clear();
@@ -389,7 +423,8 @@ class Router {
       if (kick) since_imp_ = 0;
       int heur = 0;
       if (kick) heur = 1;
-      else if (lns_mix_) {
+      else if (arm >= 0) heur = (arm == 0 || arm == 3) ? 0 : 1;
+      else if (lns_mix_ && arm < 0) {
         double w0 = hw_[0], w1 = hw_[1];
         if (sel_fix_) {
           double m = std::max(w0, w1);
@@ -398,8 +433,8 @@ class Router {
         }
         heur = unif(rng_) * (w0 + w1) < w0 ? 0 : 1;
       }
-      const int wr = kick ? kick_wr_ : lns_wr_;
-      const int kk = kick ? kick_k_ : lns_k_;
+      const int wr = kick ? kick_wr_ : (arm == 2 ? lns_wr_ + 2 : lns_wr_);
+      const int kk = kick ? kick_k_ : ((arm == 2 || arm == 3) ? lns_k_ + 2 : lns_k_);
       auto move_t0 = Clock::now();
       if (heur == 0) {
         for (int v : ideal_v[t]) {
@@ -469,15 +504,48 @@ class Router {
       ++since_imp_;
       ++since_best_;
       wx0_ = 0; wx1_ = 1 << 30; wy0_ = 0; wy1_ = 1 << 30;
-      if (lns_mix_ && !kick) {
+      if (arm >= 0) {
+        double us = std::max(1.0, std::chrono::duration<double, std::micro>(Clock::now() - move_t0).count());
+        for (auto& a : arm_) { a.s *= bandit_decay_; a.n *= bandit_decay_; a.t *= bandit_decay_; }
+        arm_[arm].s += (routed == group.size() && new_sum < old_sum) ? 1.0 : 0.0;
+        arm_[arm].n += 1.0;
+        arm_[arm].t += us;
+        ++arm_count_[arm];
+      }
+      double shaped = 0.0;
+      if (shape_g_ > 0 && routed == group.size()) {
+        double freed = 0.0;
+        for (size_t i = 0; i < group.size(); ++i)
+          for (int v : old_v_[i]) freed += press_[v];
+        for (int n : group)
+          for (int v : tv[n]) freed -= press_[v];
+        shaped = static_cast<double>(new_sum - old_sum) - shape_g_ * freed;
+      }
+      bool acc_rule = false;
+      if (routed == group.size() && new_sum > old_sum) {
+        long long cand = total_ + (new_sum - old_sum);
+        if (acc_ == 1) acc_rule = cand <= lahc_hist_[moves_ % lahc_hist_.size()];
+        else if (acc_ == 2) {
+          double frac = std::min(1.0, std::chrono::duration<double>(Clock::now() - lns_start_).count() / lns_span_);
+          acc_rule = static_cast<double>(cand) <= static_cast<double>(best_total_) * (1.0 + rrt_d0_ * (1.0 - frac));
+        }
+        if (shape_g_ > 0 && shaped <= 0.0) acc_rule = true;
+      }
+      if (lns_mix_ && !kick && arm < 0) {
         double us = std::max(1.0, std::chrono::duration<double, std::micro>(Clock::now() - move_t0).count());
         double gain = routed == group.size() && new_sum < old_sum ? static_cast<double>(old_sum - new_sum) : 0.0;
         hw_[heur] = std::max(sel_fix_ ? 1e-300 : 1e-4, (1 - lns_gamma_) * hw_[heur] + lns_gamma_ * gain / us);
         ++hcount_[heur];
       }
-      if (routed == group.size() &&
-          (new_sum <= old_sum || (sa_t0_ > 0 && unif(rng_) < std::exp(-(new_sum - old_sum) / temp_)) ||
-           (ta_t0_ > 0 && static_cast<double>(new_sum - old_sum) <= thr_))) {
+      bool accept = routed == group.size() &&
+          (new_sum <= old_sum || acc_rule || (sa_t0_ > 0 && unif(rng_) < std::exp(-(new_sum - old_sum) / temp_)) ||
+           (ta_t0_ > 0 && static_cast<double>(new_sum - old_sum) <= thr_));
+      if (acc_ == 1) {
+        long long& slot = lahc_hist_[moves_ % lahc_hist_.size()];
+        long long cur = accept ? total_ + (new_sum - old_sum) : total_;
+        if (cur < slot || accept) slot = cur;
+      }
+      if (accept) {
         total_ += new_sum - old_sum;
         ++lns_accepted_;
         ++st_acc_[st];
@@ -499,6 +567,16 @@ class Router {
     return true;
   }
 
+  void update_pressure() {
+    std::fill(press_.begin(), press_.end(), 0.0);
+    for (int n = 0; n < nn; ++n) {
+      long long ex = delay[n] - ideal_d[n];
+      if (ex <= 0 || ideal_v[n].empty()) continue;
+      double w = static_cast<double>(ex) / static_cast<double>(ideal_v[n].size());
+      for (int v : ideal_v[n]) press_[v] += w;
+    }
+  }
+
   void restore_best() {
     for (int n = 0; n < nn; ++n) rip(n);
     tv = best_v_; tp = best_p_; delay = best_d_;
@@ -511,6 +589,9 @@ class Router {
     if (verbose_) {
       std::cerr << "lns moves " << moves_ << " accepted " << lns_accepted_ << " total " << total_ << " heur "
                 << hcount_[0] << "/" << hcount_[1] << " w " << hw_[0] << "/" << hw_[1] << "\n";
+      if (bandit_)
+        std::fprintf(stderr, "ARMS ideal %lld window %lld wide %lld ideal+2 %lld random %lld\n", arm_count_[0],
+                     arm_count_[1], arm_count_[2], arm_count_[3], arm_count_[4]);
       const char* nm[3] = {"ideal", "window", "kick"};
       for (int i = 0; i < 3; ++i)
         if (st_try_[i])
@@ -653,6 +734,13 @@ class Router {
   int astar_;
   double par_sync_;
   int sel_fix_, tie_rand_;
+  int acc_, lahc_len_, bandit_, shape_every_;
+  double rrt_d0_, bandit_decay_, shape_g_;
+  std::vector<long long> lahc_hist_;
+  std::vector<double> press_;
+  struct ArmStat { double s = 0, n = 0, t = 0; };
+  ArmStat arm_[5];
+  long long arm_count_[5] = {0, 0, 0, 0, 0};
   double sel_floor_;
   int minld_ = 1;
   std::vector<char> fast_;  // per layer: is a cheapest layer
