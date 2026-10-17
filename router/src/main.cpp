@@ -184,6 +184,7 @@ class Router {
     // Idea 5: with --threads T > 1, T LNS workers run from the same solution and every
     // par_sync seconds all adopt the best one.
     par_sync_ = opt.get("par_sync", 2.0);
+    par_merge_ = static_cast<int>(opt.get_int("par_merge", 0));
     // P3: operator selection fix. The roulette weights (delay gained per microsecond, ~1e-5)
     // sat at the absolute floor 1e-4, so the choice was 50/50. With sel_fix=1 the floor is
     // relative: each weight is at least sel_floor x the larger one.
@@ -626,6 +627,8 @@ class Router {
   void lns_finish() {
     if (track_best_ && total_ > best_total_) restore_best();
     if (verbose_) {
+      if (par_merge_)
+        std::fprintf(stderr, "MERGE closures %lld gain %lld blocked %lld\n", merge_n_, merge_gain_, merge_fail_);
       std::cerr << "lns moves " << moves_ << " accepted " << lns_accepted_ << " total " << total_ << " heur "
                 << hcount_[0] << "/" << hcount_[1] << " w " << hw_[0] << "/" << hw_[1] << "\n";
       if (bandit_)
@@ -654,6 +657,53 @@ class Router {
     if (track_best_) { best_v_ = tv; best_p_ = tp; best_d_ = delay; }
     since_best_ = 0; since_imp_ = 0;
   }
+  // v5 candidate: merge instead of discard. At the sync the best worker adopts improvements
+  // another worker found: for each net whose delay that worker has lower, take its route plus,
+  // recursively, the other worker's routes of the nets now occupying points it needs. A
+  // closure is kept only if its delay sum falls (net delays depend only on the net's own tree,
+  // so the gain is exact) and is skipped above 64 nets.
+  void merge_from(const Router& o) {
+    std::vector<int> seeds, clo;
+    std::vector<int> mark(nn, -1);
+    for (int n = 0; n < nn; ++n)
+      if (o.delay[n] < delay[n]) seeds.push_back(n);
+    std::sort(seeds.begin(), seeds.end(), [&](int a, int b) { return o.delay[a] - delay[a] < o.delay[b] - delay[b]; });
+    for (size_t k = 0; k < seeds.size(); ++k) {
+      int n0 = seeds[k];
+      if (tv[n0] == o.tv[n0]) continue;  // already taken over by an earlier closure
+      clo.assign(1, n0);
+      mark[n0] = static_cast<int>(k);
+      bool ok = true;
+      for (size_t i = 0; i < clo.size() && ok; ++i)
+        for (int v : o.tv[clo[i]]) {
+          int m = owner[v];
+          if (m < 0 || m == clo[i] || mark[m] == static_cast<int>(k)) continue;
+          if (tv[m] == o.tv[m] || clo.size() >= 64) { ok = false; break; }
+          mark[m] = static_cast<int>(k);
+          clo.push_back(m);
+        }
+      long long gain = 0;
+      for (int n : clo) gain += o.delay[n] - delay[n];
+      for (int n : clo) mark[n] = -1;
+      if (!ok) { ++merge_fail_; continue; }
+      if (gain >= 0) continue;
+      for (int n : clo) rip(n);
+      for (int n : clo) { tv[n] = o.tv[n]; tp[n] = o.tp[n]; delay[n] = o.delay[n]; }
+      for (int n : clo)
+        for (int v : tv[n])
+          if (owner[v] >= 0 && owner[v] != n) ok = false;
+      if (!ok) std::abort();  // cannot happen: every point is free or a closure member's
+      for (int n : clo) place(n);
+      total_ += gain;
+      ++merge_n_;
+      merge_gain_ -= gain;
+    }
+  }
+  void add_merge_stats(const Router& o) {
+    merge_n_ += o.merge_n_; merge_gain_ += o.merge_gain_; merge_fail_ += o.merge_fail_;
+  }
+  void clear_merge_stats() { merge_n_ = merge_gain_ = merge_fail_ = 0; }
+  int par_merge() const { return par_merge_; }
   void reseed(uint64_t s) { rng_.seed(s); }
   // Per-thread threshold from ta_list (entry t mod length); no-op without ta_list.
   void thread_ta(int t) {
@@ -789,6 +839,8 @@ class Router {
   double ta_pow_, ta_rate_, ta_step_, rate_target_ = 0.0, rate_ema_ = 0.0;
   int ta_cycles_, ta_env_;
   std::string ta_list_;
+  int par_merge_;
+  long long merge_n_ = 0, merge_gain_ = 0, merge_fail_ = 0;
   std::vector<long long> lahc_hist_;
   std::vector<double> press_;
   struct ArmStat { double s = 0, n = 0, t = 0; };
@@ -1265,11 +1317,23 @@ static void parallel_lns(Router& r, int T, uint64_t seed) {
     std::vector<char> more(all.size(), 1);
     std::vector<std::thread> th;
     for (size_t i = 0; i < all.size(); ++i)
-      th.emplace_back([&, i] { more[i] = all[i]->lns_run(until); all[i]->epoch_end(); });
+      th.emplace_back([&, i] {
+        more[i] = all[i]->lns_run(until);
+        all[i]->epoch_end();
+      });
     for (auto& t : th) t.join();
     Router* best = all[0];
     for (auto* x : all)
       if (x->total() < best->total()) best = x;
+    if (r.par_merge()) {
+      std::vector<Router*> others;
+      for (auto* x : all)
+        if (x != best) others.push_back(x);
+      std::sort(others.begin(), others.end(), [](Router* a, Router* b) { return a->total() < b->total(); });
+      for (auto* x : others) best->merge_from(*x);
+      best->epoch_end();
+      if (best != &r) { r.add_merge_stats(*best); best->clear_merge_stats(); }
+    }
     for (auto* x : all)
       if (x != best) x->adopt(*best);
     bool any = false;
