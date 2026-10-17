@@ -8,6 +8,7 @@ Usage (from repo root):
   python3 research/tools/package_submission.py --run research/runs/submit-YYYYMMDD \
       --entry Jiangbanya --tiers hard congested designs --sha <router commit> --threads 1 \
       --method "..." --out research/models/<model>/submission.tar.gz
+  (tiers timed in separate runs: --tier-runs '{"designs": "research/runs/<other run>"}')
 """
 import argparse
 import datetime
@@ -63,9 +64,11 @@ def main():
     ap.add_argument("--date", default=datetime.date.today().isoformat())
     ap.add_argument("--out", required=True)
     ap.add_argument("--hardware", default=None, help="override the detected hardware string")
+    ap.add_argument("--tier-runs", default="{}",
+                    help='per-tier run dirs when tiers were timed in separate runs, e.g. {"hard": "research/runs/x"}')
     args = ap.parse_args()
 
-    run_seed = seed_dirs(args.run)[0]
+    tier_runs = json.loads(args.tier_runs)
     meta = {
         "author": args.author,
         "url": f"https://github.com/KevinChunye/eda-3d-routing-challenge/tree/{args.sha}/router",
@@ -79,7 +82,7 @@ def main():
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with tarfile.open(args.out, "w:gz") as tar:
         for tier in args.tiers:
-            src = os.path.join(run_seed, tier)
+            src = os.path.join(seed_dirs(tier_runs.get(tier, args.run))[0], tier)
             dst = f"submissions/{tier}/{args.entry}"
             runtimes = load_json(os.path.join(src, "runtime.json"))
             for case in sorted(runtimes):
