@@ -1,0 +1,7 @@
+[
+ {"name": "ta16_b", "flags": "--set ta_t0=16 --set bandit=1"},
+ {"name": "ta32_b", "flags": "--set ta_t0=32 --set bandit=1"},
+ {"name": "ta48_b", "flags": "--set ta_t0=48 --set bandit=1"},
+ {"name": "ta64_b", "flags": "--set ta_t0=64 --set bandit=1"},
+ {"name": "ta96_b", "flags": "--set ta_t0=96 --set bandit=1"}
+]
