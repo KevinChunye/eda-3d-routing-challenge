@@ -217,6 +217,11 @@ class Router {
     ta_cycles_ = static_cast<int>(opt.get_int("ta_cycles", 1));
     ta_env_ = static_cast<int>(opt.get_int("ta_env", 0));
     ta_list_ = opt.get_str("ta_list", "");
+    // v4 rate-controlled threshold (modified Lam): with ta_rate > 0 the threshold starts at
+    // ta_t0 and adapts so that the share of worsening moves accepted tracks a target falling
+    // from ta_rate to 0 over the run (x (1 - frac)^ta_pow); scale-free across case sizes.
+    ta_rate_ = opt.get("ta_rate", 0.0);
+    ta_step_ = opt.get("ta_step", 1.01);
     verbose_ = opt.get_int("verbose", 0);
     // Diagnostics only (off by default): write the current routes to snap_dir/snap_NNNN.sol.json
     // every snap_neg negotiation rounds, after each A2 sweep and every snap_s seconds of LNS,
@@ -224,7 +229,8 @@ class Router {
     snap_dir_ = opt.get_str("snap_dir", "");
     snap_s_ = opt.get("snap_s", 1.0);
     // Diagnostics: every trace_s seconds of LNS print "TRACE <s since start> <current total>
-    // <best total> <threshold>" to stderr (main worker only).
+    // <best total> <threshold> <share of worsening moves accepted (EMA)> <target share>" to
+    // stderr (main worker only).
     trace_s_ = opt.get("trace_s", 0.0);
     snap_neg_ = static_cast<int>(opt.get_int("snap_neg", 5));
 
@@ -384,6 +390,8 @@ class Router {
     lns_span_ = std::max(1e-3, std::chrono::duration<double>(deadline_ - lns_start_).count());
     temp_ = sa_t0_;
     thr_ = ta_t0_;
+    rate_target_ = ta_rate_;
+    rate_ema_ = ta_rate_;
   }
 
   // Runs LNS moves until `until`; returns false if no net has any excess left.
@@ -396,13 +404,14 @@ class Router {
         snapshot("search", 0);
       if (trace_s_ > 0 && std::chrono::duration<double>(now - last_trace_).count() >= trace_s_) {
         last_trace_ = now;
-        std::fprintf(stderr, "TRACE %.1f %lld %lld %.2f\n", std::chrono::duration<double>(now - start_).count(),
-                     total_, best_total_, thr_);
+        std::fprintf(stderr, "TRACE %.1f %lld %lld %.2f %.4f %.4f\n", std::chrono::duration<double>(now - start_).count(),
+                     total_, best_total_, thr_, rate_ema_, rate_target_);
       }
       if ((sa_t0_ > 0 || ta_t0_ > 0) && (moves_ & 63) == 0) {
         double frac = std::min(1.0, std::chrono::duration<double>(now - lns_start_).count() / lns_span_);
         if (sa_t0_ > 0) temp_ = sa_t0_ * std::pow(sa_t1_ / sa_t0_, frac);
-        if (ta_t0_ > 0) thr_ = ta_threshold(frac);
+        if (ta_t0_ > 0 && ta_rate_ <= 0) thr_ = ta_threshold(frac);
+        if (ta_rate_ > 0) rate_target_ = ta_rate_ * (ta_pow_ == 1.0 ? 1.0 - frac : std::pow(1.0 - frac, ta_pow_));
       }
       if (restore_after_ > 0 && track_best_ && since_best_ >= restore_after_ && total_ > best_total_) {
         restore_best();
@@ -557,6 +566,12 @@ class Router {
       bool accept = routed == group.size() &&
           (new_sum <= old_sum || acc_rule || (sa_t0_ > 0 && unif(rng_) < std::exp(-(new_sum - old_sum) / temp_)) ||
            (ta_t0_ > 0 && static_cast<double>(new_sum - old_sum) <= thr_));
+      if (ta_t0_ > 0 && routed == group.size() && new_sum > old_sum) {
+        bool took = static_cast<double>(new_sum - old_sum) <= thr_;
+        rate_ema_ = 0.99 * rate_ema_ + (took ? 0.01 : 0.0);
+        if (ta_rate_ > 0)
+          thr_ = rate_ema_ > rate_target_ ? thr_ / ta_step_ : std::min(1e6, std::max(0.5, thr_) * ta_step_);
+      }
       if (acc_ == 1) {
         long long& slot = lahc_hist_[moves_ % lahc_hist_.size()];
         long long cur = accept ? total_ + (new_sum - old_sum) : total_;
@@ -771,7 +786,7 @@ class Router {
   int sel_fix_, tie_rand_;
   int acc_, lahc_len_, bandit_, shape_every_;
   double rrt_d0_, bandit_decay_, shape_g_;
-  double ta_pow_;
+  double ta_pow_, ta_rate_, ta_step_, rate_target_ = 0.0, rate_ema_ = 0.0;
   int ta_cycles_, ta_env_;
   std::string ta_list_;
   std::vector<long long> lahc_hist_;
