@@ -93,6 +93,16 @@ Skipped: GPU maze routing (our grids are 36k points at most), Steiner-topology m
 tree-shape changes (measured −0.12% / +0.03% before), auctions (exact only for small
 instances).
 
+## First falsification data (8 s smoke log, hard case_01, v3 ideal-tree moves only)
+
+`research/tools/move_log_stats.py` on 2,504 moves (75 improving): 90.5% of accepted moves
+share a net with one of the previous 3 accepted moves (box overlap 100%); 0% of improving
+moves fit in a grid quadrant; a target retried with nothing changed near it since its last
+failure improves as often as one retried after a change (2.25% vs 2.37%, 89 vs 2,281
+retries). On a small case this kills #2 (shared walk; threshold 30%), region-parallel
+search and don't-look bits (#6). Big cases (designs, congested; 200–300 nets on 64–77
+grids) must be checked in E2 before deciding; #1 merge is unaffected.
+
 ## Experiment plan once the machine is free (in order)
 
 1. **E1 merge** (75 min): 4 threads, 300 s, threshold 32 + bandit, sync 60 s, merge on vs
