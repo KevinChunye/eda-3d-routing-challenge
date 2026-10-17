@@ -56,6 +56,7 @@ def main():
     ap.add_argument("--configs", required=True)
     ap.add_argument("--budget", type=float, default=30)
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--exp-id", help="append a result row to experiments.jsonl")
     args = ap.parse_args()
 
     configs = {c["name"]: c["flags"] for c in json.load(open(args.configs))}
@@ -85,6 +86,17 @@ def main():
         alive = [c for c in score.index if score.loc[c, "illegal"] == 0][:keep]
         pd.DataFrame(rows).to_csv(os.path.join(STATE, f"tune_{args.label}.csv"), index=False)
     print("\nsurvivors:", alive)
+    if args.exp_id:
+        log_result(args.exp_id, args.label, score)
+
+
+def log_result(exp_id, label, score):
+    import datetime
+    from exp_log import append
+    append(dict(kind="result", exp_id=exp_id, run=f"research/runs/{label}",
+                date=datetime.datetime.now().isoformat(timespec="seconds"),
+                race={c: {"pairs": int(r.pairs), "mean_r_pct": round(float(r.mean_r), 3),
+                          "frac_better": round(float(r.better), 3)} for c, r in score.iterrows()}))
 
 
 if __name__ == "__main__":
