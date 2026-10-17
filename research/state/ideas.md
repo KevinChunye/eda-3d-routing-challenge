@@ -109,3 +109,23 @@ Expected effects for router ideas are on the hard-tier dev aggregate (baseline =
 - **D2 · Ground truth on tiny instances** — status: open
   - Mechanism: generate 6×6–10×10 instances with `m3d/generator.py`, solve exactly by MIP,
     check bound ≤ optimum and measure the router's true optimality gap.
+
+## Ranked proposals, 2026-10-17 (status after exp-013..026)
+
+Ranked by expected gain × confidence ÷ cost at the time of proposal; measured mean r vs a
+fresh base where available.
+
+1. **P1 longer honest budget** — inconclusive (exp-026: +0.14% for 5× time with v3).
+2. **P4 combine adopted ideas** — adopted (exp-022 +0.91% single-thread; exp-024/025 +0.83/+0.90% on 4 threads) → Jiangbanya v3.
+3. **P2 deeper group moves** — rejected at 30 s (exp-015 −0.21%). Open: switch to deep moves only after stagnation (late search).
+4. **P8 big-grid escalation** — inconclusive (exp-017; congested +0.72%, designs −0.56%).
+5. **P3 operator-selector fix** — inconclusive (exp-013 +0.07%); keep the fix, it is correct.
+6. **P9 random equal-delay ties** — adopted (exp-014; part of v3).
+7. **P6 slower start** — rejected (exp-016).
+8. **P5 thread diversity (sync 10 s)** — noise vs 2 s (exp-025); used in v3.
+9. **P7 same-die long-sink neighborhoods** — open, not tested. Evidence: same-die 21–40-step
+   sinks carry the largest share of the gap to leonid-popryho.
+10. **P10 exact small-window repair (MILP / CP-SAT)** — open, not tested; cost L.
+
+Next (from the calibration lesson, search-dynamics first): adaptive depth (deep moves after
+stagnation), path relinking between thread-best solutions, P7, then P10.

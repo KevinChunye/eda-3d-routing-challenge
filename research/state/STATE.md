@@ -4,10 +4,12 @@ Read this first in every session; update it last. Keep it short: it is the hando
 between sessions on possibly different machines.
 
 ## Next action
-1. Kevin: replace PR #63's files with Jiangbanya v2 (`research/models/jiangbanya_v2/`,
-   commands in its README's parent message) and update the PR description.
-2. Then `research/prompts/10_iterate.md`. Next experiments: combine ideas 3 + 4 on top of v2;
-   tier-aware idea 4 (large grids); faster legality on large grids (E3).
+1. Kevin: replace PR #63's files with Jiangbanya v3 (`research/models/jiangbanya_v3/`) and
+   update the PR description.
+2. Then `research/prompts/10_iterate.md` with the new rule (fresh baseline in the same batch,
+   `--min-r 0.2`). Next ideas, search dynamics first: deep moves only after stagnation,
+   path relinking between thread-best solutions, same-die long-sink neighborhoods (P7),
+   exact small-window repair (P10). See ideas.md "Ranked proposals, 2026-10-17".
 
 ## Entry config (used by 40_submit; Kevin may edit)
 - entry_name: `Jiangbanya` (renamed from kevin_toll_lns by Kevin 2026-10-16; one directory per distinct method)
@@ -25,12 +27,14 @@ between sessions on possibly different machines.
 - incumbent run cache: `research/runs/incumbent/` (gitignored; rebuild on a new machine)
 
 ## Incumbent
-- exp-012 = Jiangbanya v2: router sha a235bf8, `--threads 4` plus
-  `--set lns=1 --set gneg=6 --set lns_k=6 --set fan_alpha=0.3 --set lns_mix=1`
-- dev @30 s, seeds 1-3 (run with --jobs 1): mean r +0.82% over exp-007, 11/11 cases
-- timed submission run: hard 1.3368, congested 1.2490, designs 1.3744 (v1: 1.3303, 1.2367, 1.3685)
-- also adopted but not in v2: exp-010 (threshold + kick + return to best, +0.36%)
-- model cards with animations and submission tarballs: `research/models/jiangbanya_v1/`, `jiangbanya_v2/`
+- Jiangbanya v3 (exp-025 settings): router sha 404e0c0, `--threads 4` plus
+  `--set lns=1 --set gneg=6 --set lns_k=6 --set fan_alpha=0.3 --set lns_mix=1 --set tie_rand=1
+  --set ta_t0=8 --set kick_after=300 --set restore_after=2000 --set gneg_sel=1 --set astar=1
+  --set par_sync=10`
+- dev @30 s, seeds 1-3, --jobs 1: +0.90% mean r vs fresh v2 (exp-023), 9/11; dev run cache:
+  `research/runs/exp-025`
+- timed submission run: hard 1.3471, congested 1.2644, designs 1.3853 (v2: 1.3368, 1.2490, 1.3744)
+- model cards: `research/models/jiangbanya_v1/`, `jiangbanya_v2/`, `jiangbanya_v3/`
 
 ## Machine log
 - (00_bootstrap appends: date, CPU model, logical CPUs, RAM, dial_bench µs/search)
@@ -39,8 +43,10 @@ between sessions on possibly different machines.
 ## Submitted
 - v1 (2026-10-16): PR #63 from `submit_jiangbanya_20261016`, router 2b51d4c, 1 thread · hard
   1.3303, congested 1.2367, designs 1.3685 · `research/models/jiangbanya_v1/`
-- v2 (2026-10-16): packaged, not yet pushed (Kevin pushes) · router a235bf8, 4 threads · hard
-  1.3368, congested 1.2490, designs 1.3744 · `research/models/jiangbanya_v2/`
+- v2 (2026-10-16): router a235bf8, 4 threads · hard 1.3368, congested 1.2490, designs 1.3744 ·
+  `research/models/jiangbanya_v2/` (Kevin pushes)
+- v3 (2026-10-17): router 404e0c0, 4 threads · hard 1.3471, congested 1.2644, designs 1.3853 ·
+  `research/models/jiangbanya_v3/` (Kevin pushes)
 
 ## Open questions for Kevin
 - The tag `entry-kevin_toll_lns-20261016` could not be pushed (git proxy refused tags);

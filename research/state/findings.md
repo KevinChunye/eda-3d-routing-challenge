@@ -209,3 +209,34 @@ the public README of spt_lns; no code copied).
 **Forecast calibration so far.** Ideas 1–5 delivered about 30–40% of the predicted gain;
 compute ideas (threads, longer budget) came closest, structural tree-shape ideas (1, 2) missed
 almost entirely. Predictions from exp-013 on are shrunk accordingly.
+
+## 2026-10-17 — proposals P1–P10, calibration, combinations (exp-013..026)
+
+**Screening** (30 s, seeds 1–3, single thread, vs cached exp-007): P3 selector fix +0.07%,
+P9 random ties +0.35% (10/11), P2 deeper group moves (8 nets, 12 rounds) −0.21%, P6 slower
+start −0.01%, P8 big-grid escalation +0.09% (its hard cases are untouched and still read
++0.09%: a null test).
+
+**Measurement drift (a protocol bug, not a router bug).** exp-018 reran the unchanged
+incumbent: +0.145% vs the cached exp-007, 9/11 "better", i.e. adopt under the old rule. The
+cache was recorded while an 1,800 s stress run shared the machine. Against a fresh base the
+single winners shrink to +0.21% (escape), +0.22% (cheap moves), +0.21% (random ties). Rule
+changed: fresh baseline in the same batch and `--min-r 0.2` (research/README.md). The
+threaded base had no drift (exp-023 vs exp-012: −0.04%).
+
+**Calibration.** Over 10 single ideas, Spearman(predicted, measured) = −0.20. Structural
+ideas (tree construction, deeper moves) predicted +1.47% on average and measured −0.10%;
+search-dynamics ideas (ties, escape, selector) predicted +0.12% and measured +0.26%. The
+static diagnostics (bigger, slower trees than leonid-popryho) describe where a weaker search
+ends up; they do not identify a lever. Prefer ideas that change what the search can reach.
+
+**Combinations** (vs fresh base exp-018): ties+escape +0.66% (11/11; singles sum 0.42),
+ties+cheap +0.43% (additive), escape+cheap +0.59%, all three +0.91% (8/11; sum 0.64). No
+cancellation; ties and escape reinforce each other (random equal-delay states give the
+threshold walk somewhere to go). With 4 threads: +0.83% vs fresh v2 (10/11; congested +1.5%,
+designs +1.4%); syncing every 10 s instead of 2 s: +0.07% (noise).
+
+**Budget (P1).** v3 settings at 300 s vs 60 s: +0.14% on hard case_01/05/09 (one case worse).
+v3 at 60 s already matches v1 at 300 s; extra minutes do not get below that floor. The gap
+to the top entries needs moves that restructure more, or the hundreds of thread-hours they
+used, not a few more minutes per case.
