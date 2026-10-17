@@ -233,6 +233,13 @@ class Router {
     // <best total> <threshold> <share of worsening moves accepted (EMA)> <target share>" to
     // stderr (main worker only).
     trace_s_ = opt.get("trace_s", 0.0);
+    // Diagnostics: move_log=PATH writes one line per LNS move of the main worker:
+    // "<s> <target> <type 0 ideal/1 window/2 kick> <complete 0/1> <accepted 0/1> <delta>
+    //  <x0> <y0> <x1> <y1> <k> <net...>", the box covering the group's old and new routes.
+    {
+      std::string ml = opt.get_str("move_log", "");
+      if (!ml.empty()) move_log_ = std::fopen(ml.c_str(), "w");
+    }
     snap_neg_ = static_cast<int>(opt.get_int("snap_neg", 5));
 
     X.resize(N); Y.resize(N); Z.resize(N);
@@ -567,6 +574,24 @@ class Router {
       bool accept = routed == group.size() &&
           (new_sum <= old_sum || acc_rule || (sa_t0_ > 0 && unif(rng_) < std::exp(-(new_sum - old_sum) / temp_)) ||
            (ta_t0_ > 0 && static_cast<double>(new_sum - old_sum) <= thr_));
+      if (move_log_) {
+        int bx0 = W, by0 = H, bx1 = -1, by1 = -1;
+        auto grow = [&](int v) {
+          bx0 = std::min<int>(bx0, X[v]); bx1 = std::max<int>(bx1, X[v]);
+          by0 = std::min<int>(by0, Y[v]); by1 = std::max<int>(by1, Y[v]);
+        };
+        for (size_t i = 0; i < group.size(); ++i) {
+          for (int v : old_v_[i]) grow(v);
+          if (i < routed)
+            for (int v : tv[group[i]]) grow(v);
+        }
+        std::fprintf(move_log_, "%.3f %d %d %d %d %lld %d %d %d %d %zu",
+                     std::chrono::duration<double>(Clock::now() - start_).count(), t, st,
+                     routed == group.size() ? 1 : 0, accept ? 1 : 0,
+                     routed == group.size() ? new_sum - old_sum : 0LL, bx0, by0, bx1, by1, group.size());
+        for (int n : group) std::fprintf(move_log_, " %d", n);
+        std::fputc('\n', move_log_);
+      }
       if (ta_t0_ > 0 && routed == group.size() && new_sum > old_sum) {
         bool took = static_cast<double>(new_sum - old_sum) <= thr_;
         rate_ema_ = 0.99 * rate_ema_ + (took ? 0.01 : 0.0);
@@ -625,6 +650,7 @@ class Router {
   }
 
   void lns_finish() {
+    if (move_log_) { std::fclose(move_log_); move_log_ = nullptr; }
     if (track_best_ && total_ > best_total_) restore_best();
     if (verbose_) {
       if (par_merge_)
@@ -716,7 +742,7 @@ class Router {
     thr_ = ta_t0_;
     if (!track_best_) { track_best_ = true; best_total_ = total_; best_v_ = tv; best_p_ = tp; best_d_ = delay; }
   }
-  void quiet() { snap_dir_.clear(); verbose_ = 0; trace_s_ = 0.0; }
+  void quiet() { snap_dir_.clear(); verbose_ = 0; trace_s_ = 0.0; move_log_ = nullptr; }
   void add_moves(long long m) { moves_ += m; }
   bool lns_enabled() const { return lns_ != 0; }
   double par_sync() const { return par_sync_; }
@@ -893,6 +919,7 @@ class Router {
   Clock::time_point last_snap_{};
   Clock::time_point last_trace_{};
   double trace_s_ = 0.0;
+  std::FILE* move_log_ = nullptr;
 
   void snapshot(const char* phase, long long overused) {
     if (snap_dir_.empty()) return;
