@@ -240,3 +240,47 @@ designs +1.4%); syncing every 10 s instead of 2 s: +0.07% (noise).
 v3 at 60 s already matches v1 at 300 s; extra minutes do not get below that floor. The gap
 to the top entries needs moves that restructure more, or the hundreds of thread-hours they
 used, not a few more minutes per case.
+## 2026-10-17 — v4: which optimizer for the search policy (literature → our levers)
+
+Terms: a *move* rips up a group of up to 6 nets and reroutes them; *Δ* is the move's change
+in total sink delay (Δ > 0 = worse); a *threshold* thr accepts a worse move when Δ ≤ thr.
+
+| Kevin's idea | standard name | what it means here | status |
+|---|---|---|---|
+| take a 1-step-worse decision for a better long run | non-monotone acceptance: simulated annealing, threshold accepting (Dueck & Scheuer 1990), record-to-record travel (Dueck 1993), late acceptance (Burke & Bykov 2017) | accept Δ > 0 sometimes so the walk can leave a local optimum | TA in v3 (thr 8); race exp-027 |
+| more random early, less random late | cooling schedule (SA), ε-decay (RL) | thr falls from ta_t0 to 0 over the run; shape `ta_pow`, reheats `ta_cycles` | v4 tuning |
+| short-term weight high, long-term weight small but non-zero | discounted credit assignment (discounted bandits, DyMAB; γ in RL) | a move type's success record decays by `bandit_decay` per move (0.995 → ~200-move memory) | bandit in v4 |
+| "watering": where the water goes gets weighted | water-filling / Lagrangian prices | demand map from congestion-free trees (pressure shaping); PathFinder history costs are the same idea | shaping tested: noise |
+| RL with 10% random steps | ε-greedy operator selection = a one-state RL problem (bandit) | pick among 5 move types; Thompson sampling explores in proportion to uncertainty, plus a uniform random-target arm (the "10% random") | bandit in v4 |
+| gradient descent / other optimizer | no gradient over discrete routes; subgradient ascent applies to the dual prices (lower bound) | useful for certification, not for the allocation search | not pursued for v4 |
+| tune it | automatic algorithm configuration: racing (irace / F-Race), SMAC | successive halving over (case, seed) pairs, `tune_race.py` | exp-027, exp-029 |
+
+Why not a learned RL policy (a neural network choosing moves): it needs thousands of training
+episodes across many instances to beat a hand-made rule; we have 16 public cases, a run
+makes ~10^4–10^5 moves, and a policy tuned on the same cases it is scored on is overfitting
+by another name. The within-run version of RL that fits this problem is the bandit (learn
+which move type pays off now, forget old evidence at rate γ) plus an annealed acceptance rule
+(the exploration schedule). Parallel threads add a third lever: replica-style search, where
+threads run at different thresholds and all adopt the best every 10 s (`ta_list`).
+
+**Measurements (exp-027..034; r = log(v3 delay / candidate delay), checker numbers).**
+- Short tuning runs pick the wrong winner. At 30 s, late acceptance lost 4% and higher
+  thresholds looked like noise (exp-027); at 60–600 s, threshold 16 + bandit beat v3 by
+  +1.3% on hard case_01/05/09, one thread, at both 60 s and 600 s (exp-028).
+- Threshold height is the lever; shape is not. At 300 s, one thread, 8 pairs: threshold
+  16–64 all +0.7% to +0.9% vs v3 (indistinguishable), 96 past the peak (+0.4%). Fast or slow
+  decay, decaying reheats, and bandit memory (γ = 0.99 / 0.999) were no better than plain
+  linear decay (exp-029, exp-030).
+- Exploration needs moves per net. Hard case_01 gets ~11,800 moves per net in 300 s; designs
+  ctrl gets ~215 (and spends 35 s reaching legality). Designs loses with high thresholds at
+  300 s (−1.0% to −2.4%). At 1,800 s the second descent shows (trace plot,
+  `research/models/jiangbanya_v4/`): threshold 32 is 2.2% behind v3 at 1,243 s and 0.28%
+  at the end, so on designs exploration only catches up (exp-032). The rate-controlled
+  threshold (target share of worse moves accepted, 0.25 → 0) tracks v3 there (+0.02%).
+- Threads cut walks short. With 4 threads syncing to the best every 10 s, the one-thread
+  gain mostly vanishes (+0.14% vs v3, exp-031); syncing every 60 s recovers part of it
+  (+0.28% over 10 s; hard case_05/09 +1.15/+1.34%, congested +0.89% vs v3; exp-033).
+  Per-thread thresholds 16/32/48/64 did not help (−0.08%).
+- Budget is the big lever on large cases: designs ctrl with v3 settings, 1 thread 1,800 s
+  (50,250) beats 4 threads 300 s (50,858–50,948) by 1.2–1.4%. One long walk uses CPU about
+  twice as well as four walks reset every 10 s.
