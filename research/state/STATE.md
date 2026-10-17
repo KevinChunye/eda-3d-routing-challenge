@@ -4,12 +4,15 @@ Read this first in every session; update it last. Keep it short: it is the hando
 between sessions on possibly different machines.
 
 ## Next action
-1. Kevin: replace PR #63's files with Jiangbanya v3 (`research/models/jiangbanya_v3/`) and
-   update the PR description.
-2. Then `research/prompts/10_iterate.md` with the new rule (fresh baseline in the same batch,
-   `--min-r 0.2`). Next ideas, search dynamics first: deep moves only after stagnation,
-   path relinking between thread-best solutions, same-die long-sink neighborhoods (P7),
-   exact small-window repair (P10). See ideas.md "Ranked proposals, 2026-10-17".
+1. In progress (2026-10-17): Jiangbanya v4 timed run, router 457c4df, 4 threads, one case at
+   a time. hard done (`research/runs/submit-v4-hard-20261017`, 600 s/case, aggregate 1.3786,
+   +2.31% vs v3, 9/9 better). congested (1,800 s/case) and designs (1,800 s/case) restarted
+   23:01 UTC after a container restart killed the first attempt; script
+   `/tmp/claude-0/submit4.sh` (skips finished tiers). Then: package with
+   `package_submission.py --tier-runs`, GIFs, `research/models/jiangbanya_v4/`, Kevin's
+   commands (exp-035).
+2. Then the v5 plan in `research/state/next_moves.md` (E1 merge at sync, E2 move log on big
+   cases, E3 exact-window diagnostic).
 
 ## Entry config (used by 40_submit; Kevin may edit)
 - entry_name: `Jiangbanya` (renamed from kevin_toll_lns by Kevin 2026-10-16; one directory per distinct method)
