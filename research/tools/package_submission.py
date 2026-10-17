@@ -14,23 +14,32 @@ import datetime
 import io
 import json
 import os
+import subprocess
 import tarfile
 
 from common import load_json, seed_dirs
 
 
 def machine_string():
+    """"<CPU> (<logical CPUs> vCPU), <RAM> GB" on Linux (/proc) or macOS (sysctl)."""
     cpu, mem_gb = "unknown CPU", None
-    with open("/proc/cpuinfo") as fh:
-        for line in fh:
-            if line.startswith("model name"):
-                cpu = line.split(":", 1)[1].strip()
-                break
-    with open("/proc/meminfo") as fh:
-        for line in fh:
-            if line.startswith("MemTotal"):
-                mem_gb = round(int(line.split()[1]) / 1024 / 1024)
-                break
+    try:
+        with open("/proc/cpuinfo") as fh:
+            for line in fh:
+                if line.startswith("model name"):
+                    cpu = line.split(":", 1)[1].strip()
+                    break
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemTotal"):
+                    mem_gb = round(int(line.split()[1]) / 1024 / 1024)
+                    break
+    except OSError:
+        def sysctl(key):
+            return subprocess.run(["sysctl", "-n", key], capture_output=True, text=True).stdout.strip()
+        cpu = sysctl("machdep.cpu.brand_string") or cpu
+        mem = sysctl("hw.memsize")
+        mem_gb = round(int(mem) / 1024 ** 3) if mem.isdigit() else None
     return f"{cpu} ({os.cpu_count()} vCPU), {mem_gb} GB"
 
 
@@ -53,6 +62,7 @@ def main():
     ap.add_argument("--author", default="Kevin Wang (KevinChunye)")
     ap.add_argument("--date", default=datetime.date.today().isoformat())
     ap.add_argument("--out", required=True)
+    ap.add_argument("--hardware", default=None, help="override the detected hardware string")
     args = ap.parse_args()
 
     run_seed = seed_dirs(args.run)[0]
@@ -61,7 +71,7 @@ def main():
         "url": f"https://github.com/KevinChunye/eda-3d-routing-challenge/tree/{args.sha}/router",
         "method": args.method,
         "date": args.date,
-        "hardware": machine_string(),
+        "hardware": args.hardware or machine_string(),
         "threads": args.threads,
         "router_commit": args.sha,
     }

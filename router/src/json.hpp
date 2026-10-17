@@ -16,11 +16,14 @@ struct Value {
   bool b = false;
   std::string str;
   std::vector<Value> arr;
-  std::vector<std::pair<std::string, Value>> obj;
+  // object members as parallel vectors (a vector of pair<string, Value> needs Value complete,
+  // which clang/libc++ enforce)
+  std::vector<std::string> keys;
+  std::vector<Value> vals;
 
   const Value* find(const std::string& k) const {
-    for (const auto& kv : obj)
-      if (kv.first == k) return &kv.second;
+    for (size_t i = 0; i < keys.size(); ++i)
+      if (keys[i] == k) return &vals[i];
     return nullptr;
   }
   const Value& at(const std::string& k) const {
@@ -29,7 +32,7 @@ struct Value {
     return *v;
   }
   const Value& at(size_t i) const { return arr.at(i); }
-  size_t size() const { return kind == Arr ? arr.size() : obj.size(); }
+  size_t size() const { return kind == Arr ? arr.size() : keys.size(); }
   long long as_int() const { return static_cast<long long>(num); }
 };
 
@@ -70,7 +73,8 @@ class Parser {
         ws();
         std::string k = string_lit();
         expect(':');
-        v.obj.emplace_back(std::move(k), value());
+        v.keys.push_back(std::move(k));
+        v.vals.push_back(value());
         ws();
         if (p_ < e_ && *p_ == ',') { ++p_; continue; }
         expect('}');
