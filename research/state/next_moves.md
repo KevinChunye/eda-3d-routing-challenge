@@ -117,3 +117,28 @@ grids) must be checked in E2 before deciding; #1 merge is unaffected.
 Honest expectation: #1–#3 address the measured waste (threads) and could add +0.5–1%;
 reaching +2–3% over v4 needs #4-type moves to work as well, which history says to doubt
 until measured.
+
+## System design view (Kevin's ride-dispatch analogy, 2026-10-18)
+
+Ride dispatch keeps only each driver's latest position (plus a short history) in memory,
+indexes the map by cells and their neighbour rings, prices demand hot spots (surge) and
+matches requests to drivers in batches. The same structure fits the router:
+
+| dispatch | router | status / evidence |
+|---|---|---|
+| latest location per driver, last n steps | one authoritative solution: per-net route + version counter; a journal of the last n changes per net (what the merge and concurrent commits need) instead of four full copies | today 4 full copies per thread; memory is not the limit (77×77×6 = 35.6k points, a whole solution < 1 MB): the cost of copies is the work thrown away at sync (Test 0) |
+| map cells + neighbour rings | square tiles (8×8) with ring neighbourhoods; per tile: nets passing (inverted index), excess heat, free fast points, last-change version | squares, not hexagons: paths are rectilinear, so a sink's cheapest-path corridor is its axis-aligned bounding box; hexagons suit Euclidean distance and would cut grid points |
+| demand hot spots / surge price | per-tile demand (excess wanting fast area) vs supply (free fast points); a price on over-demanded tiles steers which nets give up fast area | `surge_congested_case04.png`: demand piles up in the centre (hottest 10% of tiles hold 46%) where 0% of fast points are free; corners keep 30–50% free; corr(demand, free supply) −0.35 |
+| dispatcher picks requests by area | targets drawn from hot tiles, victims by low value per fast point (single-sink branches first) | designs #5, #6 |
+| batch matching every few seconds | every few minutes, choose one route per net from a pool of candidate routes (set packing) | design #3 |
+| drivers work in parallel in different areas | workers claim a tile ring and commit if versions are unchanged | small cases: 90% of consecutive moves share a net (kills it there); big cases: measure (E2) |
+
+Tuning efficiency (Kevin: use memory and iterations well during fine-tuning):
+- checkpoint and branch: run the shared prefix once (legalisation + early search, 20–40% of
+  a run), save our own state, and branch the variants of late-phase settings (cooling end,
+  sync, merge) from it. Valid only for settings that act after the checkpoint; submission
+  runs still start from the instance file alone.
+- keep successive halving (racing), but at the submission budget (exp-029/030 showed short
+  budgets pick the wrong winner).
+- online tuning inside a run: a bandit per tile class (hot / cold, crowded / free) instead
+  of one global bandit, so move choice adapts to the local situation.
