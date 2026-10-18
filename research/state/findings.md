@@ -347,3 +347,32 @@ independently generated alternatives. Drop route-pool set packing (#3 in next_mo
 was +0.36% → "inconclusive", because 9 of 11 dev cases are hard, where search is saturated
 (~11,800 moves per net in 300 s vs ~215 on designs). Speed ideas need a tier-balanced verdict:
 the mean of per-tier mean r, with each tier also checked separately.
+
+## 2026-10-18 — S1 measured (exp-036..038), S3 built
+
+Terms: *r* = 100 × log(baseline delay / candidate delay) per (case, seed), checker numbers;
+*tier mean r* = mean over that tier's runs; *balanced* = mean of the tier means (S2).
+Baseline = Jiangbanya v4 per-tier flags; S1 = `--set neg_int=4 --set neg_goal=1.5`; 300 s,
+1 thread, seeds 1–3, baseline and candidate in the same batch (2 + 2 jobs on 4 cores).
+
+| tier | cases | mean r | runs better | S2 decision |
+|---|---|---:|---:|---|
+| hard | case_01/05/09 | +0.22% | 4/9 | inconclusive (r per run −0.34 … +1.21) |
+| congested | case_01/02 | +0.78% | 6/6 | adopt |
+| designs | ctrl, int2float | +1.09% | 6/6 | adopt |
+
+Balanced mean +0.69% (predicted +0.8%; per tier +0.4 / +1.2 / +0.7). The speed-up pays
+where the search is unsaturated: big grids (~200–300 moves per net in 300 s) gain on every
+run; hard (thousands of moves per net) only shuffles noise. The old dev protocol (9 of 11
+cases hard) would have called this inconclusive.
+
+Goal weight (exp-037, congested + designs, one interleaved batch with a fresh 1.5): 1.0 vs
+1.5 congested −0.44% (0/6), designs +0.08% (3/6, a tie); 2.0 vs 1.5 congested −0.12%,
+designs −0.27%. Keep 1.5. The fresh 1.5 runs reproduce exp-036 against the v4 baseline
+(congested +0.79%, designs +1.01%): the effect is stable across batches.
+
+S3 (ejection chains, `ej_p`, router f132009): flags off byte-identical; deterministic with
+S1 + S3; legal on all router tests and on congested case_01. Smoke runs (contended, not a
+measurement): chains cost 0.65–3.2 ms per move vs 4.3–7.8 ms for group moves; delay gained
+per CPU-second ~3× the group moves' on hard case_05 (8 s) and ~1.1× the window move's on
+congested case_01 (240 s). First test registered as exp-039 (not run).
