@@ -3,7 +3,8 @@
 Every (config, tier, case, seed) job goes into one pool of --jobs workers, so all configs
 share the machine at the same time and drift between them cancels. Each config writes the
 same layout as run_router.py: research/runs/<label>/seed<N>/<tier>/<case>.sol.json, plus
-runtime.json and stats.jsonl per tier. Timed submission runs still use run_router.py.
+runtime.json and stats.jsonl per tier (with the router's STAT / ARMS / MERGE lines when it
+runs with --set verbose=1). Timed submission runs still use run_router.py.
 
 Usage (from repo root):
   python3 research/tools/run_batch.py --cases "hard:case_01+designs:ctrl" --seeds 1 2 3 \
@@ -74,8 +75,9 @@ def main():
             json.dump({r["case"]: round(r["secs"], 3) for r in rs if r["ok"]}, fh, indent=1)
         with open(os.path.join(tdir, "stats.jsonl"), "w") as fh:
             for r in rs:
+                stat = [ln for ln in r["stderr_tail"].splitlines() if ln.startswith(("STAT", "ARMS", "MERGE"))]
                 fh.write(json.dumps(dict(case=r["case"], secs=round(r["secs"], 3), rc=r["rc"],
-                                         ok=r["ok"], stats=r["stats"])) + "\n")
+                                         ok=r["ok"], stats=r["stats"], move_stats=stat)) + "\n")
     print(f"\n{sum(r['ok'] for r in results)}/{len(results)} runs produced a file")
 
 

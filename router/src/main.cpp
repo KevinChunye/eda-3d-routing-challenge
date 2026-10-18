@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -154,6 +155,17 @@ class Router {
     // (weight on a sink-box lower bound; > 1 is inexact). Final placement stays exact.
     neg_int_ = opt.get("neg_int", 0.0);
     neg_goal_ = opt.get("neg_goal", 0.0);
+    // S3 ejection chains: with probability ej_p a move is a chain instead of a group move.
+    // The target takes its cheapest tree where each point of another net costs ej_pen more;
+    // the nets it displaces are rerouted exactly against the live state and, if blocked,
+    // displace others in turn (nets already moved in the chain are frozen; at most ej_cap
+    // displacements). Each time all displaced nets are placed again (a legal state) the
+    // change is recorded; the net that lost most then reopens the chain (at most ej_steps
+    // openings). The best legal prefix is kept under the acceptance rule, else all is undone.
+    ej_p_ = opt.get("ej_p", 0.0);
+    ej_pen_ = static_cast<int>(opt.get_int("ej_pen", 8));
+    ej_cap_ = static_cast<int>(opt.get_int("ej_cap", 20));
+    ej_steps_ = static_cast<int>(opt.get_int("ej_steps", 4));
     if (neg_int_ > 0) nbuck_.resize(1 << 16);
     gneg_mult_ = opt.get("gneg_mult", 2.0);
     gneg_hist_ = opt.get("gneg_hist", 0.5);
@@ -398,6 +410,7 @@ class Router {
     track_best_ = sa_t0_ > 0 || ta_t0_ > 0 || acc_ > 0 || shape_g_ > 0;
     if (acc_ == 1) lahc_hist_.assign(std::max(1, lahc_len_), total_);
     if (shape_g_ > 0) press_.assign(N, 0.0);
+    if (ej_p_ > 0) { ej_mark_.assign(nn, 0); ej_placed_.assign(nn, 0); }
     best_total_ = total_;
     if (track_best_) { best_v_ = tv; best_p_ = tp; best_d_ = delay; }
     lns_start_ = Clock::now();
@@ -455,6 +468,24 @@ class Router {
         double r = std::uniform_real_distribution<double>(0.0, acc)(rng_);
         t = static_cast<int>(std::upper_bound(cum_.begin(), cum_.end(), r) - cum_.begin());
         if (t >= nn) t = nn - 1;
+      }
+      if (ej_p_ > 0 && unif(rng_) < ej_p_) {
+        auto e0 = Clock::now();
+        long long dlt = 0;
+        bool took = ejection_move(t, dlt);
+        ++moves_; ++since_imp_; ++since_best_; ++ej_try_;
+        ej_us_ += std::chrono::duration<double, std::micro>(Clock::now() - e0).count();
+        if (took) {
+          total_ += dlt;
+          ++lns_accepted_; ++ej_acc_;
+          if (dlt < 0) { since_imp_ = 0; ++ej_imp_; ej_gain_ -= dlt; }
+          if (track_best_ && total_ < best_total_) {
+            best_total_ = total_;
+            best_v_ = tv; best_p_ = tp; best_d_ = delay;
+            since_best_ = 0;
+          }
+        }
+        continue;
       }
       ++epoch_;
       net_mark_[t] = epoch_;
@@ -631,6 +662,127 @@ class Router {
     return true;
   }
 
+  // S3: cheapest tree for n where points of other (unfrozen) nets cost ej_pen extra; pins of
+  // other nets and points of nets already moved in this chain are blocked. Binary heap (the
+  // penalty breaks the bucket queue's cost bound); the tree comes from plain predecessors.
+  bool route_evict(int n) {
+    ++stamp_;
+    int remaining = 0;
+    for (int s : in_.sinks[n])
+      if (target[s] != stamp_) { target[s] = stamp_; ++remaining; }
+    int d = in_.drv[n];
+    dist[d] = 0; seen[d] = stamp_; pred[d] = -1;
+    ej_heap_.clear();
+    ej_heap_.push_back({0, d});
+    auto cmp = [](const std::pair<int, int>& a, const std::pair<int, int>& b) { return a.first > b.first; };
+    while (!ej_heap_.empty() && remaining > 0) {
+      std::pop_heap(ej_heap_.begin(), ej_heap_.end(), cmp);
+      auto [dv, v] = ej_heap_.back();
+      ej_heap_.pop_back();
+      if (done[v] == stamp_ || dv != dist[v]) continue;
+      done[v] = stamp_;
+      if (target[v] == stamp_ && --remaining == 0) break;
+      for_nb(v, [&](int u, int c) {
+        if (pin_net[u] >= 0 && pin_net[u] != n) return;
+        int o = owner[u], extra = 0;
+        if (o >= 0 && o != n) {
+          if (ej_mark_[o] == ej_epoch_) return;
+          extra = ej_pen_;
+        }
+        int nd = dv + c + extra;
+        if (seen[u] != stamp_ || nd < dist[u]) {
+          seen[u] = stamp_;
+          dist[u] = nd;
+          pred[u] = v;
+          ej_heap_.push_back({nd, u});
+          std::push_heap(ej_heap_.begin(), ej_heap_.end(), cmp);
+        }
+      });
+    }
+    if (remaining > 0) return false;
+    build_tree(n);
+    return true;
+  }
+
+  void ej_touch(int m) {
+    ej_mark_[m] = ej_epoch_;
+    size_t i = ej_nets_.size();
+    ej_nets_.push_back(m);
+    if (ej_old_v_.size() <= i) { ej_old_v_.resize(i + 1); ej_old_p_.resize(i + 1); ej_old_d_.resize(i + 1); }
+    ej_old_v_[i] = tv[m]; ej_old_p_[i] = tp[m]; ej_old_d_[i] = delay[m];
+    ej_placed_[m] = 1;
+  }
+
+  // Net n takes a penalised tree; the nets it lands on are ripped and queued. A pending net
+  // is not placed: its old points may already belong to the net that displaced it.
+  bool ej_open(int n, int& evictions) {
+    if (ej_placed_[n]) rip(n);
+    ej_placed_[n] = 0;
+    if (!route_evict(n)) return false;
+    ej_vics_.clear();
+    for (int v : tv[n]) {
+      int o = owner[v];
+      if (o >= 0 && o != n && ej_mark_[o] != ej_epoch_) { ej_touch(o); ej_vics_.push_back(o); }
+    }
+    for (int o : ej_vics_) { rip(o); ej_placed_[o] = 0; ej_pend_.push_back(o); ++evictions; }
+    place(n);
+    ej_placed_[n] = 1;
+    return true;
+  }
+
+  // One ejection-chain move on target t. Returns true if a change was kept; dlt = its delay change.
+  bool ejection_move(int t, long long& dlt) {
+    ++ej_epoch_;
+    ej_nets_.clear();
+    ej_pend_.clear();
+    ej_touch(t);
+    long long best = std::numeric_limits<long long>::max();
+    size_t best_n = 0;
+    int evictions = 0, active = t;
+    for (int step = 0; step < ej_steps_; ++step) {
+      if (!ej_open(active, evictions)) break;
+      bool ok = true;
+      for (size_t h = 0; h < ej_pend_.size() && ok; ++h) {
+        int m = ej_pend_[h];
+        if (route_exact(m)) { place(m); ej_placed_[m] = 1; continue; }
+        ok = evictions < ej_cap_ && ej_open(m, evictions);
+      }
+      ej_pend_.clear();
+      if (!ok) break;
+      ++ej_closed_;
+      long long dsum = 0, worst = 0;
+      int next = -1;
+      for (size_t i = 0; i < ej_nets_.size(); ++i) {
+        long long ch = delay[ej_nets_[i]] - ej_old_d_[i];
+        dsum += ch;
+        if (ch > worst) { worst = ch; next = ej_nets_[i]; }
+      }
+      if (dsum < best) {
+        best = dsum;
+        best_n = ej_nets_.size();
+        if (ej_best_v_.size() < best_n) { ej_best_v_.resize(best_n); ej_best_p_.resize(best_n); ej_best_d_.resize(best_n); }
+        for (size_t i = 0; i < best_n; ++i) {
+          int m = ej_nets_[i];
+          ej_best_v_[i] = tv[m]; ej_best_p_[i] = tp[m]; ej_best_d_[i] = delay[m];
+        }
+      }
+      if (next < 0) break;
+      active = next;
+    }
+    ej_evict_ += evictions;
+    for (int m : ej_nets_)
+      if (ej_placed_[m]) { rip(m); ej_placed_[m] = 0; }
+    bool keep = best_n > 0 && (best <= 0 || (ta_t0_ > 0 && static_cast<double>(best) <= thr_));
+    for (size_t i = 0; i < ej_nets_.size(); ++i) {
+      int m = ej_nets_[i];
+      if (keep && i < best_n) { tv[m].swap(ej_best_v_[i]); tp[m].swap(ej_best_p_[i]); delay[m] = ej_best_d_[i]; }
+      else { tv[m].swap(ej_old_v_[i]); tp[m].swap(ej_old_p_[i]); delay[m] = ej_old_d_[i]; }
+      place(m);
+    }
+    dlt = keep ? best : 0;
+    return keep;
+  }
+
   double ta_threshold(double frac) const {
     if (ta_cycles_ <= 1 && ta_pow_ == 1.0 && !ta_env_) return ta_t0_ * (1.0 - frac);
     double c = ta_cycles_ <= 1 ? frac : std::fmod(frac * ta_cycles_, 1.0);
@@ -666,6 +818,10 @@ class Router {
       if (bandit_)
         std::fprintf(stderr, "ARMS ideal %lld window %lld wide %lld ideal+2 %lld random %lld\n", arm_count_[0],
                      arm_count_[1], arm_count_[2], arm_count_[3], arm_count_[4]);
+      if (ej_try_)
+        std::fprintf(stderr, "STAT chain tried %lld closed %.3f accepted %.3f improved %.4f gain %lld evictions/move %.2f us/move %.0f\n",
+                     ej_try_, double(ej_closed_) / ej_try_, double(ej_acc_) / ej_try_, double(ej_imp_) / ej_try_,
+                     ej_gain_, double(ej_evict_) / ej_try_, ej_us_ / ej_try_);
       const char* nm[3] = {"ideal", "window", "kick"};
       for (int i = 0; i < 3; ++i)
         if (st_try_[i])
@@ -881,6 +1037,17 @@ class Router {
   double sel_floor_;
   int minld_ = 1;
   double neg_int_ = 0.0, neg_goal_ = 0.0;
+  double ej_p_ = 0.0;
+  int ej_pen_ = 8, ej_cap_ = 20, ej_steps_ = 4;
+  uint32_t ej_epoch_ = 0;
+  std::vector<uint32_t> ej_mark_;
+  std::vector<char> ej_placed_;
+  std::vector<int> ej_nets_, ej_pend_, ej_vics_;
+  std::vector<std::vector<int>> ej_old_v_, ej_old_p_, ej_best_v_, ej_best_p_;
+  std::vector<long long> ej_old_d_, ej_best_d_;
+  std::vector<std::pair<int, int>> ej_heap_;
+  long long ej_try_ = 0, ej_closed_ = 0, ej_acc_ = 0, ej_imp_ = 0, ej_gain_ = 0, ej_evict_ = 0;
+  double ej_us_ = 0.0;
   std::vector<std::vector<int>> nbuck_;
   std::vector<int> sbx0_, sbx1_, sby0_, sby1_, szm_;
   std::vector<char> fast_;  // per layer: is a cheapest layer
