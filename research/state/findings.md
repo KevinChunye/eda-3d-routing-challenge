@@ -416,3 +416,8 @@ Checker aggregates, ranks among entries that report runtime:
 - Congested (exp-041, registered, not run): `run_router.py --time-total '{"congested": 7200}'`
   gives case_01..04 1,209.7 / 1,668.8 / 2,120.6 / 2,200.8 s (166/229/291/302 nets); the
   formula goes into meta.json as `time_limit_policy` (`package_submission.py --time-policy`).
+
+Designs sync (exp-044, 4 threads, 1,800 s, seed 1, S1): par_sync 600 vs 10 (the exp-038 runs):
+ctrl 49,880 vs 50,084 (+0.41%), int2float +0.51%. With S1 and the low threshold, longer
+independent walks pay on designs. Timed designs run at 3,600 s/case with S1 + par_sync 600
+registered as exp-045 (not run; needs Kevin's OK).

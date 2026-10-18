@@ -8,8 +8,8 @@ between sessions on possibly different machines.
    v5 sparse tiers (intro 1.1406 #2, scale 1.1152 #3, stress 1.0798 #3 among entries reporting
    runtime) in `research/models/jiangbanya_v5_sparse/`. Kevin submits both himself.
 2. Waiting for Kevin's OK (registered, not run): exp-041 timed congested run with
-   net-proportional limits (7,200 s total); and, if exp-044 says so, a timed designs run at
-   3,600 s/case with S1 + the winning par_sync.
+   net-proportional limits (7,200 s total); exp-045 timed designs run at 3,600 s/case with
+   S1 + par_sync 600 (exp-044: +0.41% / +0.51% over par_sync 10 at 1,800 s).
 3. Next research: exp-039 (S3 ejection chains), then E1 merge. Targets still open: congested
    > 1.3111 and designs > 1.4354 for #1 among runtime-reporting entries; intro > 1.1514.
 
