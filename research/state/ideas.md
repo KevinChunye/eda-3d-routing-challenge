@@ -158,9 +158,10 @@ remain untested and are what the 2–3% target needs.
 
 ## Dispatch engine, 2026-10-18 (findings memo of the same date)
 
-- **S1 · Integer, goal-directed negotiated search** — status: adopted for congested and
-  designs (exp-036: +0.78% 6/6, +1.09% 6/6 vs v4 at 300 s, 1 thread); inconclusive on hard
-  (+0.22%, 4/9); neg_goal 1.5 kept (exp-037); 4-thread confirmation at v4 budgets: exp-038
+- **S1 · Integer, goal-directed negotiated search** — status: adopted for designs only.
+  300 s, 1 thread (exp-036): congested +0.78% 6/6, designs +1.09% 6/6, hard +0.22% 4/9;
+  neg_goal 1.5 kept (exp-037). At v4 budgets with 4 threads (exp-038): designs +0.64% (2/2),
+  congested −0.18% (0/2) → off for congested and hard
   - Evidence: 79% of LNS CPU on hard is group negotiation (heap, fractional costs); 32–57×
     more points settled than the tree returned; heap ~5.9× slower per point than buckets.
   - Mechanism: `research/patches/s1_neg_int.patch` (flags `neg_int`, `neg_goal`; off = identical).

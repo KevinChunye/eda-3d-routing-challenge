@@ -371,6 +371,21 @@ Goal weight (exp-037, congested + designs, one interleaved batch with a fresh 1.
 designs −0.27%. Keep 1.5. The fresh 1.5 runs reproduce exp-036 against the v4 baseline
 (congested +0.79%, designs +1.01%): the effect is stable across batches.
 
+Confirmation at submission settings (exp-038: 4 threads, 1,800 s, seed 1; baseline = the
+v4 timed run on the same machine type, budget, threads and seed, not rerun):
+
+| case | v4 | v4 + S1 | r |
+|---|---:|---:|---:|
+| congested case_01 | 53,517 | 53,667 | −0.28% |
+| congested case_02 | 95,382 | 95,456 | −0.08% |
+| designs ctrl | 50,434 | 50,084 | +0.70% |
+| designs int2float | 92,280 | 91,752 | +0.57% |
+
+S1 holds on designs (+0.64%, 2/2) and vanishes on congested (−0.18%, 0/2): 4 threads × 1,800 s
+is ~24× the compute of the 300 s single-thread test, enough to saturate congested as well.
+A speed idea's gain must be checked at the budget it will run with; the 300 s single-thread
+screen overstates it on mid-size cases. Next config candidate: v4 + S1 on designs only.
+
 S3 (ejection chains, `ej_p`, router f132009): flags off byte-identical; deterministic with
 S1 + S3; legal on all router tests and on congested case_01. Smoke runs (contended, not a
 measurement): chains cost 0.65–3.2 ms per move vs 4.3–7.8 ms for group moves; delay gained
