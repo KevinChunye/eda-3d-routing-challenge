@@ -158,7 +158,9 @@ remain untested and are what the 2–3% target needs.
 
 ## Dispatch engine, 2026-10-18 (findings memo of the same date)
 
-- **S1 · Integer, goal-directed negotiated search** — status: open — priority: top
+- **S1 · Integer, goal-directed negotiated search** — status: adopted for congested and
+  designs (exp-036: +0.78% 6/6, +1.09% 6/6 vs v4 at 300 s, 1 thread); inconclusive on hard
+  (+0.22%, 4/9); neg_goal 1.5 kept (exp-037); 4-thread confirmation at v4 budgets: exp-038
   - Evidence: 79% of LNS CPU on hard is group negotiation (heap, fractional costs); 32–57×
     more points settled than the tree returned; heap ~5.9× slower per point than buckets.
   - Mechanism: `research/patches/s1_neg_int.patch` (flags `neg_int`, `neg_goal`; off = identical).
@@ -166,10 +168,12 @@ remain untested and are what the 2–3% target needs.
   - Cost: S (patch ready). Falsify: tier-balanced mean r < +0.2% at 300 s.
   - Sweep: neg_goal ∈ {1.0, 1.5, 2.0} per tier (designs may prefer 1.0: inexact moves
     improve less often there).
-- **S2 · Tier-balanced verdict for speed ideas** — status: open (protocol)
+- **S2 · Tier-balanced verdict for speed ideas** — status: in use (`research/tools/tier_verdict.py`;
+  same-batch configs with `research/tools/run_batch.py`)
   - Mean of per-tier mean r on hard case_01/05/09, congested case_01/02, designs ctrl/int2float;
     report each tier too. Speed ideas only.
-- **S3 · Ejection-chain move with best-prefix rollback** — status: open — priority: high after S1
+- **S3 · Ejection-chain move with best-prefix rollback** — status: implemented behind
+  `ej_p` (router f132009; flags off identical); first test registered as exp-039, not run
   - Evidence: price-generated pools never improve the incumbent (LP = incumbent); Q1 says 8–20
     nets must move to free one sink's path; current groups stop at 6 with costly negotiation.
   - Mechanism: target takes its cheapest route with a penalty per foreign point it crosses;
