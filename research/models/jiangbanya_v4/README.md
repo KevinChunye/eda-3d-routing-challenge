@@ -13,10 +13,12 @@ Checker scores, one timed run per case, seed 1, 4 threads, Intel Xeon @ 2.10 GHz
 |---|---:|---:|---:|---:|---:|---:|---:|:---:|
 | hard | 1.3471 | **1.3786** | +2.31% | 9/9 | 146,057 | 600 s (v3 60 s) | 5,391 s | 9/9 |
 | congested | 1.2644 | **1.3034** | +3.04% | 4/4 | 495,581 | 1,800 s (v3 300 s) | 7,196 s | 4/4 |
-| designs | 1.3853 | DESIGNS_SCORE | DESIGNS_R | DESIGNS_BETTER | DESIGNS_DELAY | 1,800 s (v3 300 s) | DESIGNS_RT | DESIGNS_LEGAL |
+| designs | 1.3853 | **1.4150** | +2.13% | 3/3 | 212,397 | 1,800 s (v3 300 s) | 5,397 s | 3/3 |
 
-"v4 vs v3" is the mean over cases of log(v3 delay / v4 delay). Predicted before the run
-(exp-035): hard +1.0%, congested +1.5%, designs +1.3%.
+"v4 vs v3" is the mean over cases of log(v3 delay / v4 delay). v4 beats v3 on all 16
+cases; mean over tiers +2.49%. Predicted before the run (exp-035): hard +1.0%, congested
++1.5%, designs +1.3%. Ranks on the current board: hard 7, congested 7, designs 7 (v3: 8, 7,
+7); congested is 0.4% short of rank 6.
 
 - Router commit: `457c4df` on `m3d_research`.
 - Base flags (v3): `--threads 4 --set lns=1 --set gneg=6 --set lns_k=6 --set fan_alpha=0.3
@@ -52,5 +54,6 @@ show their second descent late.
 - `trace_designs_ctrl_1800s.png`: the second descent. Designs ctrl, 1 thread, 1,800 s,
   threshold 8 (v3) vs 16 and 32: higher thresholds wander above their start, then fall
   steeply as the threshold cools to 0.
-- `run_hard_case01.gif`: RUN_GIF_NOTE
+- `surge_congested_case04.png`: v3 routes on congested case_04, 8×8 tiles: demand for the
+  fast layers piles up in the centre, where no fast point is free; corners keep 30–50% free.
 - `layers_hard_case01.gif`: the submitted v4 hard case_01 routes, layer by layer.

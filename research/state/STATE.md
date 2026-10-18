@@ -4,13 +4,9 @@ Read this first in every session; update it last. Keep it short: it is the hando
 between sessions on possibly different machines.
 
 ## Next action
-1. In progress (2026-10-17): Jiangbanya v4 timed run, router 457c4df, 4 threads, one case at
-   a time. hard done (`research/runs/submit-v4-hard-20261017`, 600 s/case, aggregate 1.3786,
-   +2.31% vs v3, 9/9 better). congested (1,800 s/case) and designs (1,800 s/case) restarted
-   23:01 UTC after a container restart killed the first attempt; script
-   `/tmp/claude-0/submit4.sh` (skips finished tiers). Then: package with
-   `package_submission.py --tier-runs`, GIFs, `research/models/jiangbanya_v4/`, Kevin's
-   commands (exp-035).
+1. Done 2026-10-18: Jiangbanya v4 scored, packaged and documented
+   (`research/models/jiangbanya_v4/`: README, submission.tar.gz, GIF, plots). Kevin
+   replaces PR #63's files with it himself (no submission branch work here).
 2. Then the re-ranked v5 plan at the top of `research/state/next_moves.md` (2026-10-18):
    apply `research/patches/s1_neg_int.patch` and evaluate S1 with a tier-balanced verdict
    (S2), then S3 ejection chains, then E1 merge. Route-pool set packing is rejected.
@@ -31,14 +27,16 @@ between sessions on possibly different machines.
 - incumbent run cache: `research/runs/incumbent/` (gitignored; rebuild on a new machine)
 
 ## Incumbent
-- Jiangbanya v3 (exp-025 settings): router sha 404e0c0, `--threads 4` plus
-  `--set lns=1 --set gneg=6 --set lns_k=6 --set fan_alpha=0.3 --set lns_mix=1 --set tie_rand=1
-  --set ta_t0=8 --set kick_after=300 --set restore_after=2000 --set gneg_sel=1 --set astar=1
-  --set par_sync=10`
-- dev @30 s, seeds 1-3, --jobs 1: +0.90% mean r vs fresh v2 (exp-023), 9/11; dev run cache:
-  `research/runs/exp-025`
-- timed submission run: hard 1.3471, congested 1.2644, designs 1.3853 (v2: 1.3368, 1.2490, 1.3744)
-- model cards: `research/models/jiangbanya_v1/`, `jiangbanya_v2/`, `jiangbanya_v3/`
+- Jiangbanya v4 (exp-035): router sha 457c4df, `--threads 4`, per-tier settings:
+  base = v3 flags (below); hard base + `--set ta_t0=32 --set bandit=1 --set par_sync=120` at
+  600 s; congested base + `--set ta_t0=32 --set bandit=1 --set par_sync=360` at 1,800 s;
+  designs base at 1,800 s.
+- timed run: hard 1.3786, congested 1.3034, designs 1.4150 (v3: 1.3471, 1.2644, 1.3853);
+  16/16 cases better; runs `research/runs/submit-v4-{hard,congested,designs}-20261017`.
+- v3 flags: `--set lns=1 --set gneg=6 --set lns_k=6 --set fan_alpha=0.3 --set lns_mix=1
+  --set tie_rand=1 --set ta_t0=8 --set kick_after=300 --set restore_after=2000 --set gneg_sel=1
+  --set astar=1 --set par_sync=10` (router 404e0c0 for v3 itself).
+- model cards: `research/models/jiangbanya_v1/` … `jiangbanya_v4/`
 
 ## Machine log
 - (00_bootstrap appends: date, CPU model, logical CPUs, RAM, dial_bench µs/search)
@@ -51,6 +49,8 @@ between sessions on possibly different machines.
   `research/models/jiangbanya_v2/` (Kevin pushes)
 - v3 (2026-10-17): router 404e0c0, 4 threads · hard 1.3471, congested 1.2644, designs 1.3853 ·
   `research/models/jiangbanya_v3/` (Kevin pushes)
+- v4 (2026-10-18, prepared): router 457c4df, 4 threads, 600/1,800/1,800 s · hard 1.3786,
+  congested 1.3034, designs 1.4150 · `research/models/jiangbanya_v4/` (Kevin pushes)
 
 ## Open questions for Kevin
 - The tag `entry-kevin_toll_lns-20261016` could not be pushed (git proxy refused tags);
