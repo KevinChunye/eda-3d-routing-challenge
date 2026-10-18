@@ -166,6 +166,9 @@ class Router {
     ej_pen_ = static_cast<int>(opt.get_int("ej_pen", 8));
     ej_cap_ = static_cast<int>(opt.get_int("ej_cap", 20));
     ej_steps_ = static_cast<int>(opt.get_int("ej_steps", 4));
+    // Deadline guard (huge grids): do not start a move unless deadline_guard x the running
+    // average move time still fits before the deadline (0 = off: start moves until the deadline).
+    deadline_guard_ = opt.get("deadline_guard", 0.0);
     if (neg_int_ > 0) nbuck_.resize(1 << 16);
     gneg_mult_ = opt.get("gneg_mult", 2.0);
     gneg_hist_ = opt.get("gneg_hist", 0.5);
@@ -388,16 +391,19 @@ class Router {
   // keep the result if the group's total delay did not rise.
   void lns() {
     if (!lns_) return;
-    lns_setup();
+    if (!lns_setup()) return;
     lns_run(deadline_);
     lns_finish();
   }
 
-  void lns_setup() {
+  // Returns false if the deadline passes during the congestion-free pass (no move could run
+  // after it anyway, so stopping there changes no route; it only avoids overshooting).
+  bool lns_setup() {
     ideal_v.resize(nn);
     ideal_d.assign(nn, 0);
     std::vector<int> tmpP;
     for (int n = 0; n < nn; ++n) {
+      if (Clock::now() >= deadline_) return false;
       route_exact<true>(n);
       ideal_d[n] = build_tree_into(n, ideal_v[n], tmpP);
     }
@@ -419,6 +425,9 @@ class Router {
     thr_ = ta_t0_;
     rate_target_ = ta_rate_;
     rate_ema_ = ta_rate_;
+    if (verbose_)
+      std::fprintf(stderr, "lns setup done at %.1f s\n", std::chrono::duration<double>(Clock::now() - start_).count());
+    return true;
   }
 
   // Runs LNS moves until `until`; returns false if no net has any excess left.
@@ -427,6 +436,9 @@ class Router {
     while (true) {
       auto now = Clock::now();
       if (now >= until || (max_moves_ >= 0 && moves_ >= max_moves_)) break;
+      if (deadline_guard_ > 0 &&
+          now + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double, std::micro>(deadline_guard_ * move_ema_us_)) >= deadline_)
+        break;
       if (!snap_dir_.empty() && std::chrono::duration<double>(now - last_snap_).count() >= snap_s_)
         snapshot("search", 0);
       if (trace_s_ > 0 && std::chrono::duration<double>(now - last_trace_).count() >= trace_s_) {
@@ -571,7 +583,11 @@ class Router {
         }
       }
       ++moves_;
-      st_us_[st] += std::chrono::duration<double, std::micro>(Clock::now() - move_t0).count();
+      {
+        double us = std::chrono::duration<double, std::micro>(Clock::now() - move_t0).count();
+        st_us_[st] += us;
+        move_ema_us_ = move_ema_us_ <= 0 ? us : 0.9 * move_ema_us_ + 0.1 * us;
+      }
       ++since_imp_;
       ++since_best_;
       wx0_ = 0; wx1_ = 1 << 30; wy0_ = 0; wy1_ = 1 << 30;
@@ -1037,7 +1053,7 @@ class Router {
   double sel_floor_;
   int minld_ = 1;
   double neg_int_ = 0.0, neg_goal_ = 0.0;
-  double ej_p_ = 0.0;
+  double ej_p_ = 0.0, deadline_guard_ = 0.0, move_ema_us_ = 0.0;
   int ej_pen_ = 8, ej_cap_ = 20, ej_steps_ = 4;
   uint32_t ej_epoch_ = 0;
   std::vector<uint32_t> ej_mark_;
@@ -1591,7 +1607,7 @@ class Router {
 // Idea 5: T workers run LNS from the same solution with different seeds; every par_sync
 // seconds each ends on its best solution and all adopt the overall best.
 static void parallel_lns(Router& r, int T, uint64_t seed) {
-  r.lns_setup();
+  if (!r.lns_setup()) return;
   r.thread_ta(0);
   std::vector<std::unique_ptr<Router>> extra;
   std::vector<Router*> all{&r};
@@ -1676,7 +1692,9 @@ int main(int argc, char** argv) {
   }
 
   // Finish with a safety margin so the file is written before the limit.
+  // end_margin=S overrides it (huge grids need longer to write and to finish a move).
   double margin = std::min(1.0, 0.03 * time_limit + 0.05);
+  margin = opt.get("end_margin", margin);
   auto deadline = t0 + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(time_limit - margin));
 
   Instance in = load_instance(inst_path);
