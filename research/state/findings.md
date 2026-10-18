@@ -391,3 +391,28 @@ S1 + S3; legal on all router tests and on congested case_01. Smoke runs (contend
 measurement): chains cost 0.65–3.2 ms per move vs 4.3–7.8 ms for group moves; delay gained
 per CPU-second ~3× the group moves' on hard case_05 (8 s) and ~1.1× the window move's on
 congested case_01 (240 s). First test registered as exp-039 (not run).
+
+## 2026-10-18 — sparse tiers timed (exp-040..043), stress deadline fixed, congested split registered
+
+Config: v4 hard flags + S1 (`--set neg_int=4 --set neg_goal=1.5`), 4 threads, router 858a703.
+Checker aggregates, ranks among entries that report runtime:
+
+| tier | v5 | runtime | rank | entries with runtime ahead / behind |
+|---|---:|---:|---:|---|
+| intro (60 s/case) | 1.1406 | 1,122 s | 2 | pathfinder_lns 1.1514 (46,477 s) / iamparv7043 1.1254 |
+| scale (300 s/case) | 1.1152 | 2,393 s | 3 | pathfinder_lns 1.1277, warm_lns_refinement 1.1274 (derived) / iamparv7043 1.1010 |
+| stress (2,400 s) | 1.0798 | 2,399 s | 3 | pathfinder_lns 1.0914, warm_lns_refinement 1.0911 (derived) / — |
+
+- Screen (exp-040): on intro case_13–20 we beat iamparv7043 on 8/8 (+2.31%) and trail
+  pathfinder_lns on 8/8 (−1.56%); on scale case_01/08 +1.3% vs iamparv7043, −0.6/−1.6% vs
+  pathfinder_lns. Intro #1 needs ~+0.95% on the aggregate.
+- Stress (exp-042): S1 cuts a negotiation round from ~180 s to ~33 s; first legal at 1,025 s
+  of a 2,400 s limit (escalation at 35% closes it in 7 rounds). The +49 s overshoot of
+  2026-10-16 is gone: the congestion-free pass now stops at the deadline (routes unchanged)
+  and `deadline_guard` stops starting moves that would cross it; both stress runs ended at
+  2,399.2–2,399.4 s. Exact-reroute sweeps after legality ran 42 × 21 s (2–5 nets improved
+  each at the end); cutting them (`refine_stop=0.01`) cost 0.09% because stress moves cost
+  1.6–2.1 s and gain as little.
+- Congested (exp-041, registered, not run): `run_router.py --time-total '{"congested": 7200}'`
+  gives case_01..04 1,209.7 / 1,668.8 / 2,120.6 / 2,200.8 s (166/229/291/302 nets); the
+  formula goes into meta.json as `time_limit_policy` (`package_submission.py --time-policy`).

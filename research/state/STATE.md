@@ -4,16 +4,14 @@ Read this first in every session; update it last. Keep it short: it is the hando
 between sessions on possibly different machines.
 
 ## Next action
-1. Done 2026-10-18: Jiangbanya v4 scored, packaged and documented
-   (`research/models/jiangbanya_v4/`: README, submission.tar.gz, GIF, plots). Kevin
-   replaces PR #63's files with it himself (no submission branch work here).
-2. Done 2026-10-18 (exp-036..038): S1 (`--set neg_int=4 --set neg_goal=1.5`, router 00baa22+)
-   is adopted for designs only (+0.64% at v4 budget, 4 threads); congested and hard keep v4
-   flags. Candidate next config = v4 + S1 on designs; a timed run needs Kevin's OK.
-3. Next: run exp-039 (registered): S3 ejection chains (`--set ej_p=0.3`, router f132009) on
-   each tier's best config, 300 s, 1 thread, seeds 1–3, `run_batch.py` + `tier_verdict.py`,
-   with `--set verbose=1` to compare chain vs window gain per CPU-second. Then E1 merge.
-   Check any adopted speed/search idea at the budget and threads it will run with.
+1. Done 2026-10-18: Jiangbanya v4 (hard/congested/designs) in `research/models/jiangbanya_v4/`;
+   v5 sparse tiers (intro 1.1406 #2, scale 1.1152 #3, stress 1.0798 #3 among entries reporting
+   runtime) in `research/models/jiangbanya_v5_sparse/`. Kevin submits both himself.
+2. Waiting for Kevin's OK (registered, not run): exp-041 timed congested run with
+   net-proportional limits (7,200 s total); and, if exp-044 says so, a timed designs run at
+   3,600 s/case with S1 + the winning par_sync.
+3. Next research: exp-039 (S3 ejection chains), then E1 merge. Targets still open: congested
+   > 1.3111 and designs > 1.4354 for #1 among runtime-reporting entries; intro > 1.1514.
 
 ## Entry config (used by 40_submit; Kevin may edit)
 - entry_name: `Jiangbanya` (renamed from kevin_toll_lns by Kevin 2026-10-16; one directory per distinct method)
