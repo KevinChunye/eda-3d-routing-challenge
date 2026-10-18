@@ -149,6 +149,12 @@ class Router {
     // (-1 = whole grid). The old trees fit inside, so a move can always restore them.
     lns_win_ = static_cast<int>(opt.get_int("lns_win", -1));
     gneg_pf0_ = opt.get("gneg_pf0", 0.5);
+    // S1 (dispatch engine): negotiated searches on integer costs (scale neg_int) with a
+    // circular bucket queue; neg_goal > 0 makes group-negotiation searches goal-directed
+    // (weight on a sink-box lower bound; > 1 is inexact). Final placement stays exact.
+    neg_int_ = opt.get("neg_int", 0.0);
+    neg_goal_ = opt.get("neg_goal", 0.0);
+    if (neg_int_ > 0) nbuck_.resize(1 << 16);
     gneg_mult_ = opt.get("gneg_mult", 2.0);
     gneg_hist_ = opt.get("gneg_hist", 0.5);
     // after the first round, reroute only group nets that touch an overused point
@@ -874,6 +880,9 @@ class Router {
   long long arm_count_[5] = {0, 0, 0, 0, 0};
   double sel_floor_;
   int minld_ = 1;
+  double neg_int_ = 0.0, neg_goal_ = 0.0;
+  std::vector<std::vector<int>> nbuck_;
+  std::vector<int> sbx0_, sbx1_, sby0_, sby1_, szm_;
   std::vector<char> fast_;  // per layer: is a cheapest layer
   // tree / reverse-search scratch for ideas 1 and 2
   std::vector<uint32_t> inT_, sinkm_, rseen_, rdone_;
@@ -1173,6 +1182,7 @@ class Router {
   template <bool Group = false>
   bool route_neg(int n, double pf) {
     if ((tree_seq_ == 1 || (tree_seq_ == 2 && !Group)) && in_.sinks[n].size() > 1) return route_neg_seq<Group>(n, pf);
+    if (neg_int_ > 0) return route_neg_int<Group>(n, pf);
     if (astar_ && in_.sinks[n].size() == 1) return route_neg_astar<Group>(n, pf);
     ++stamp_;
     int remaining = 0;
@@ -1281,6 +1291,95 @@ class Router {
   }
 
   // Idea 4: negotiated search for a single-sink net with the same admissible bound as A*.
+  // S1: sinks' bounding box and layer set per net, for the goal-directed bound.
+  void sink_boxes() {
+    if (!sbx0_.empty()) return;
+    sbx0_.assign(nn, 0); sbx1_.assign(nn, 0); sby0_.assign(nn, 0); sby1_.assign(nn, 0); szm_.assign(nn, 0);
+    for (int n = 0; n < nn; ++n) {
+      int s0 = in_.sinks[n][0];
+      int a = X[s0], b = X[s0], c = Y[s0], e = Y[s0], zm = 0;
+      for (int s : in_.sinks[n]) {
+        a = std::min<int>(a, X[s]); b = std::max<int>(b, X[s]);
+        c = std::min<int>(c, Y[s]); e = std::max<int>(e, Y[s]);
+        zm |= 1 << Z[s];
+      }
+      sbx0_[n] = a; sbx1_[n] = b; sby0_[n] = c; sby1_[n] = e; szm_[n] = zm;
+    }
+  }
+  // Lower bound on the delay from v to the nearest sink of n: cheapest step x L1 distance to
+  // the sinks' box + via x layer gap to the nearest sink layer (admissible and consistent).
+  inline int hsink(int v, int n) const {
+    int x = X[v], y = Y[v], z = Z[v];
+    int dx = std::max(0, std::max(sbx0_[n] - x, x - sbx1_[n]));
+    int dy = std::max(0, std::max(sby0_[n] - y, y - sby1_[n]));
+    int dz = 1 << 20;
+    for (int k = 0; k < L; ++k)
+      if (szm_[n] >> k & 1) dz = std::min(dz, std::abs(z - k));
+    return minld_ * (dx + dy) + via * dz;
+  }
+
+  // S1: negotiated shortest-path tree on integer-scaled costs (round(neg_int x cost), >= 1)
+  // with a circular bucket queue. Key = dist + round(neg_int x weight x bound); weight is
+  // neg_goal in group negotiation and 1 (exact A*) in the initial negotiation. A key below
+  // the current bucket is clamped to it (inexact only when neg_goal > 1, acceptable here:
+  // negotiation only proposes trees; the placed tree comes from route_exact).
+  template <bool Group>
+  bool route_neg_int(int n, double pf) {
+    sink_boxes();
+    ++stamp_;
+    int remaining = 0;
+    for (int s : in_.sinks[n])
+      if (target[s] != stamp_) { target[s] = stamp_; ++remaining; }
+    const int d = in_.drv[n];
+    const double w = netw_[n], wpf = w * pf;
+    // initial negotiation: weight 1 (consistent bound -> exact on the integer costs)
+    const double aw = Group ? neg_goal_ : (neg_goal_ > 0 ? 1.0 : 0.0);
+    const double sc = neg_int_;
+    auto hk = [&](int v) -> long long { return aw > 0 ? static_cast<long long>(sc * aw * hsink(v, n)) : 0LL; };
+    const long long B = static_cast<long long>(nbuck_.size()), mask = B - 1;
+    dist[d] = 0; seen[d] = stamp_; pred[d] = -1;
+    long long cur = hk(d);
+    nbuck_[cur & mask].push_back(d);
+    long long queued = 1, maxk = cur;
+    while (queued > 0 && remaining > 0) {
+      auto& b = nbuck_[cur & mask];
+      for (size_t i = 0; i < b.size() && remaining > 0; ++i) {
+        int v = b[i];
+        --queued;
+        if (done[v] == stamp_) continue;
+        done[v] = stamp_;
+        if (target[v] == stamp_ && --remaining == 0) break;
+        const int dv = dist[v];
+        for_nb(v, [&](int u, int c) {
+          int pn = Group ? owner[u] : pin_net[u];
+          if (pn >= 0 && pn != n) return;
+          if (X[u] < wx0_ || X[u] > wx1_ || Y[u] < wy0_ || Y[u] > wy1_) return;
+          if (done[u] == stamp_) return;
+          int ic = std::max(1, static_cast<int>(std::lround(sc * neg_cost(u, c, pf, w, wpf))));
+          int nd = dv + ic;
+          if (seen[u] != stamp_ || nd < dist[u]) {
+            seen[u] = stamp_;
+            dist[u] = nd;
+            pred[u] = v;
+            long long key = std::min(cur + B - 1, std::max(cur, static_cast<long long>(nd) + hk(u)));
+            nbuck_[key & mask].push_back(u);
+            maxk = std::max(maxk, key);
+            ++queued;
+          }
+        });
+      }
+      if (remaining > 0) { b.clear(); ++cur; }
+    }
+    if (maxk - cur >= B) {
+      for (auto& b : nbuck_) b.clear();
+    } else {
+      for (long long k = cur; k <= maxk; ++k) nbuck_[k & mask].clear();
+    }
+    if (remaining > 0) return false;
+    build_tree(n);
+    return true;
+  }
+
   template <bool Group>
   bool route_neg_astar(int n, double pf) {
     ++stamp_;
