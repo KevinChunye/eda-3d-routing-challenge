@@ -1,0 +1,10 @@
+tier,entry,cases,legal,delay,runtime,derived,aggregate
+stress,coordinated_refinement,1,1,1042314.0,,True,1.0984252346221963
+stress,leonid-popryho,1,1,1042322.0,,False,1.0984168040202549
+stress,cuda-have-been-shorter,1,1,1042926.0,,False,1.0977806670847212
+stress,pathfinder_lns,1,1,1048990.0,43262.885,False,1.0914346180611827
+stress,warm_lns_refinement,1,1,1049332.0,2070.0,True,1.0910788959071105
+stress,Jiangbanya,1,1,1060258.0,2399.353,False,1.0798352853739372
+stress,spt_lns,1,1,1062208.0,,False,1.0778529252274507
+stress,lns_negotiated,1,1,1073124.0,,False,1.066888821795058
+stress,synapse-surge,1,1,1143964.0,,False,1.0008217041795022

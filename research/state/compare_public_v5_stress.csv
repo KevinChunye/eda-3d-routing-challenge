@@ -1,0 +1,10 @@
+tier,entry,case,legal,delay,runtime,baseline,lb_best,derived,ratio
+stress,coordinated_refinement,case_01,True,1042314,,1144904,1035918.0,True,1.0984252346221963
+stress,cuda-have-been-shorter,case_01,True,1042926,,1144904,1035918.0,False,1.0977806670847212
+stress,leonid-popryho,case_01,True,1042322,,1144904,1035918.0,False,1.0984168040202549
+stress,lns_negotiated,case_01,True,1073124,,1144904,1035918.0,False,1.066888821795058
+stress,pathfinder_lns,case_01,True,1048990,43262.885,1144904,1035918.0,False,1.0914346180611827
+stress,spt_lns,case_01,True,1062208,,1144904,1035918.0,False,1.0778529252274507
+stress,synapse-surge,case_01,True,1143964,,1144904,1035918.0,False,1.0008217041795022
+stress,warm_lns_refinement,case_01,True,1049332,2070.0,1144904,1035918.0,True,1.0910788959071105
+stress,Jiangbanya,case_01,True,1060258,2399.353,1144904,1035918.0,False,1.0798352853739372
