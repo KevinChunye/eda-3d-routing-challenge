@@ -11,8 +11,9 @@ between sessions on possibly different machines.
    `/tmp/claude-0/submit4.sh` (skips finished tiers). Then: package with
    `package_submission.py --tier-runs`, GIFs, `research/models/jiangbanya_v4/`, Kevin's
    commands (exp-035).
-2. Then the v5 plan in `research/state/next_moves.md` (E1 merge at sync, E2 move log on big
-   cases, E3 exact-window diagnostic).
+2. Then the re-ranked v5 plan at the top of `research/state/next_moves.md` (2026-10-18):
+   apply `research/patches/s1_neg_int.patch` and evaluate S1 with a tier-balanced verdict
+   (S2), then S3 ejection chains, then E1 merge. Route-pool set packing is rejected.
 
 ## Entry config (used by 40_submit; Kevin may edit)
 - entry_name: `Jiangbanya` (renamed from kevin_toll_lns by Kevin 2026-10-16; one directory per distinct method)

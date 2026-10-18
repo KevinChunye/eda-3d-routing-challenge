@@ -1,5 +1,23 @@
 # Next moves: design brief built on measurements (2026-10-17, during the v4 timed run)
 
+## Update 2026-10-18: the dispatch-engine audit re-ranks this plan
+
+Evidence: findings.md, memo of 2026-10-18. In ride-dispatch terms: estimate cheaply while
+shortlisting, compute exactly only when committing, query only the area that can matter, and
+when supply units conflict in chains, reassign along the chain instead of re-solving one big
+batch.
+
+| order | step | evidence | predicted (shrunk) | falsify |
+|---:|---|---|---|---|
+| 1 | **S1 integer, goal-directed negotiation** (`research/patches/s1_neg_int.patch`; `--set neg_int=4 --set neg_goal=1.5`) | 79% of hard CPU is heap-based negotiation; searches settle 32–57× more points than the tree they return; scratch test: 1.7–2.8× moves/s, mean r +0.98% at 120 s (6/7) | +0.5–1.0% per tier at submission budgets; first legal 25–45% sooner | tier-balanced mean r < +0.2% at 300 s, or any illegal case |
+| 2 | **S2 tier-balanced verdict** for speed ideas: mean of per-tier mean r over hard ×3, congested ×2, designs ×2 | exp-011: +1.8% congested, +2.1% designs, 0.0% hard → +0.36% "inconclusive" | — (protocol) | — |
+| 3 | **S3 ejection-chain move** (variable depth, Lin–Kernighan style): give the target its best route allowing evictions; reroute each evicted net exactly against the live state, which may evict the next; keep the best prefix of the chain | pool test: independently priced alternatives never recombine (LP stuck at the incumbent); Q1: freeing one sink needs 8–20 nets moved; each step is one exact search, cheap after S1 | 0 to +0.8% on top of S1 | delay gained per CPU-second ≤ the current window move's |
+| 4 | E1 merge at sync (built) / shared walk | Q4, Test 0 (unchanged) | +0.1–0.4% | as before |
+| — | ~~route-pool set packing (#3)~~ | falsified twice on hard case_05 (8,881 surge-price trees; 40 rounds of column generation): integer optimum = incumbent | — | — |
+
+S1 also re-opens the sparse tiers: on scale case_08 the first legal solution came at 68 s
+instead of 91 s, and at 240 s delay was 1.1% lower. Stress was blocked by 1,693 s to legality.
+
 Goal for the next version: the 2–3% that tuning the search policy (v4) did not deliver.
 Each section states a question, what we measured on our own routes, and the design it
 points to. Predictions are shrunk per findings.md (structural ideas have historically

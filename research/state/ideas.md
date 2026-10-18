@@ -155,3 +155,29 @@ catches up); a size-aware threshold (scaled by expected moves per net) or a long
 designs budget would test whether the crossover comes later. Structural levers (P7
 same-die long-sink moves, P10 exact window repair, path relinking between thread bests)
 remain untested and are what the 2–3% target needs.
+
+## Dispatch engine, 2026-10-18 (findings memo of the same date)
+
+- **S1 · Integer, goal-directed negotiated search** — status: open — priority: top
+  - Evidence: 79% of LNS CPU on hard is group negotiation (heap, fractional costs); 32–57×
+    more points settled than the tree returned; heap ~5.9× slower per point than buckets.
+  - Mechanism: `research/patches/s1_neg_int.patch` (flags `neg_int`, `neg_goal`; off = identical).
+  - Expect: tier-balanced +0.5–1.0% at submission budgets. Scratch: +0.98% at 120 s (6/7).
+  - Cost: S (patch ready). Falsify: tier-balanced mean r < +0.2% at 300 s.
+  - Sweep: neg_goal ∈ {1.0, 1.5, 2.0} per tier (designs may prefer 1.0: inexact moves
+    improve less often there).
+- **S2 · Tier-balanced verdict for speed ideas** — status: open (protocol)
+  - Mean of per-tier mean r on hard case_01/05/09, congested case_01/02, designs ctrl/int2float;
+    report each tier too. Speed ideas only.
+- **S3 · Ejection-chain move with best-prefix rollback** — status: open — priority: high after S1
+  - Evidence: price-generated pools never improve the incumbent (LP = incumbent); Q1 says 8–20
+    nets must move to free one sink's path; current groups stop at 6 with costly negotiation.
+  - Mechanism: target takes its cheapest route with a penalty per foreign point it crosses;
+    each evicted net is rerouted exactly against the live state (may evict one more); track the
+    cumulative change and roll back to the best prefix; depth cap 20; accept under the TA rule.
+  - Expect: 0 to +0.8% on top of S1. Cost: M. Falsify: gain per CPU-second ≤ window move's.
+- **S4 · Search window with fallback** — status: open — priority: low
+  - Trees leave terminal box + 8 in ≤ 4% of searches; bounding at box + 8 and retrying
+    unbounded on failure saves 30–50% of settled points. Combine with S1 only if S1 lands.
+- **Pool set packing (#3 in next_moves)** — status: rejected (2026-10-18, LP = MIP = incumbent
+  on hard case_05 in both pricing modes; `research/tools/pool_selection.py`).

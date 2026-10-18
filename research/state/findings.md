@@ -284,3 +284,66 @@ threads run at different thresholds and all adopt the best every 10 s (`ta_list`
 - Budget is the big lever on large cases: designs ctrl with v3 settings, 1 thread 1,800 s
   (50,250) beats 4 threads 300 s (50,858–50,948) by 1.2–1.4%. One long walk uses CPU about
   twice as well as four walks reset every 10 s.
+
+## 2026-10-18 — dispatch-engine audit: where a move's CPU goes, and two falsified directions
+
+Measured outside the dev protocol: scratch builds on a 2-vCPU machine, 1 thread, 120 s per
+run unless stated, every delay checker-verified. Terms: a *search* is one shortest-path tree
+computation for one net; *settled* = grid points a search finalises; *r* = log(baseline delay /
+candidate delay) × 100, so r > 0 means the candidate is better.
+
+**Where the CPU goes** (gprof, 90 s). Hard case_05 (v4 hard flags): 79% of CPU is the
+group-negotiation searches (binary heap on fractional costs); the exact reroutes that place
+the final trees take 7%. Designs ctrl (v3 flags): group negotiation 56%, initial negotiation
+37% (32 s of 90 s before the first legal solution).
+
+**Search volume vs the answer** (instrumented copy). A group-negotiation search for a
+multi-sink net settles 13,266 points (37% of the 35,574-point grid) on designs ctrl to return
+a 234-point tree (57×), and 2,084 points (34% of the grid) on hard case_05 for a 65-point
+tree (32×). Per settled point the heap search costs ~67 ns; the bucket queue the exact search
+already uses costs ~11.5 ns (`dial_bench`), 5.9× less. On designs, 4 nets with 9+ sinks take
+31% of the search work and 2–4-sink nets 48%; single-sink nets, which carry most of the excess,
+take 16%. Trees leave their terminal bounding box + 8 in ≤ 4% of searches, but the boxes are
+large, so windowing alone saves only 30–50%. Partial rip-up of big nets would save < 2×:
+67–85% of a big victim's sink paths enter the target's box + 3.
+
+**S1: approximate while negotiating, exact at commit** (`research/patches/s1_neg_int.patch`,
+flags `neg_int` = integer cost scale, `neg_goal` = goal weight). Negotiated searches run on
+integer costs round(4 × cost) with a circular bucket queue. Group searches are goal-directed:
+key = distance + 1.5 × (cheapest step × L1 distance to the sinks' box + via × layer gap); a
+weight above 1 makes them inexact. The initial negotiation uses weight 1 (exact A*). The tree
+that is placed still comes from the exact search. Flags off: byte-identical to router c05f101
+with time-free flags (hard case_01/02/07, max_iters 400); flags on: legal on intro 01/03/05,
+hard 01, designs ctrl, scale 01; deterministic at a fixed move cap.
+
+| case | seed | baseline | S1 | r % | moves/s | s to first legal |
+|---|---:|---:|---:|---:|---|---|
+| hard case_05 | 1 | 15,645 | 15,395 | +1.61 | 244 → 665 | 3.1 → 2.6 |
+| hard case_05 | 2 | 15,401 | 15,385 | +0.10 | 269 → 714 | 3.0 → 2.2 |
+| hard case_09 | 3 | 21,814 | 21,572 | +1.12 | 180 → 505 | 5.7 → 4.4 |
+| congested case_01 | 1 | 55,641 | 54,755 | +1.61 | 81 → 189 | 29.3 → 19.5 |
+| congested case_01 | 2 | 55,545 | 54,655 | +1.62 | 78 → 177 | 29.5 → 19.7 |
+| designs ctrl | 1 | 51,988 | 51,516 | +0.91 | 69 → 122 | 33.1 → 24.0 |
+| designs ctrl | 3 | 51,614 | 51,680 | −0.13 | 72 → 121 | 32.0 → 23.7 |
+
+Mean r +0.98%, 6/7 better. These rows used the patch before the initial negotiation got
+weight 1; with it, designs ctrl seed 3 reached 51,318 (r +0.57%, first legal at 17.7 s) and scale
+case_08 at 240 s went 111,625 → 110,397 (r +1.11%, first legal 91 → 68 s). Per move, the
+inexact search improves less often on big grids (designs 11.4% → 8.2% of moves, congested
+9.2% → 6.2%) but costs 2.1–2.8× less; on hard the rate is unchanged. Inexact goal direction in
+the *initial* negotiation (weight 2) reached legality twice as fast but started from a worse
+allocation: congested −1.9%, designs −1.0% at 120 s. Keep the initial phase exact.
+
+**Batch matching is falsified here** (`research/tools/pool_selection.py`, hard case_05,
+given solution = our 15,645 route). Surge-price mode: 120 rounds, 8,881 candidate trees
+(median 105 per net); the LP relaxation over the pool and the integer optimum both equal the
+given 15,645. Column generation with the LP's own dual prices: 40 rounds, 4,111 trees with
+reduced cost down to −300 every round; the LP value never moved. Each priced tree needs
+coordinated partners that independent pricing never produces. Improving routes must be built
+against the live occupancy, one displaced net after another (chains), not selected from
+independently generated alternatives. Drop route-pool set packing (#3 in next_moves.md).
+
+**Protocol blind spot.** exp-011 (A*): congested +1.8%, designs +2.1%, hard 0.0%; the dev mean
+was +0.36% → "inconclusive", because 9 of 11 dev cases are hard, where search is saturated
+(~11,800 moves per net in 300 s vs ~215 on designs). Speed ideas need a tier-balanced verdict:
+the mean of per-tier mean r, with each tier also checked separately.
