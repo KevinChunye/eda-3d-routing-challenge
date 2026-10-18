@@ -64,6 +64,8 @@ def main():
     ap.add_argument("--date", default=datetime.date.today().isoformat())
     ap.add_argument("--out", required=True)
     ap.add_argument("--hardware", default=None, help="override the detected hardware string")
+    ap.add_argument("--time-policy", default="{}",
+                    help='per-tier text for meta.json "time_limit_policy", e.g. {"congested": "7200 s x nets / ..."}')
     ap.add_argument("--tier-runs", default="{}",
                     help='per-tier run dirs when tiers were timed in separate runs, e.g. {"hard": "research/runs/x"}')
     args = ap.parse_args()
@@ -78,7 +80,7 @@ def main():
         "threads": args.threads,
         "router_commit": args.sha,
     }
-    meta_bytes = (json.dumps(meta, indent=1) + "\n").encode()
+    policies = json.loads(args.time_policy)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with tarfile.open(args.out, "w:gz") as tar:
         for tier in args.tiers:
@@ -90,7 +92,8 @@ def main():
                     add_bytes(tar, f"{dst}/{case}.sol.json", fh.read())
             with open(os.path.join(src, "runtime.json"), "rb") as fh:
                 add_bytes(tar, f"{dst}/runtime.json", fh.read())
-            add_bytes(tar, f"{dst}/meta.json", meta_bytes)
+            tier_meta = dict(meta, time_limit_policy=policies[tier]) if tier in policies else meta
+            add_bytes(tar, f"{dst}/meta.json", (json.dumps(tier_meta, indent=1) + "\n").encode())
             print(f"{dst}: {len(runtimes)} routes")
     print("wrote", args.out)
 

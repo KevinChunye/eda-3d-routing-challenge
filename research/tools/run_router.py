@@ -9,6 +9,8 @@ Usage (from repo root):
       --cmd "router/build/m3d_route --instance {instance} --out {out} --time-limit {time} --seed {seed} --threads {threads} {extra}"
 
 Placeholders in --cmd: {instance} {out} {time} {seed} {threads} {tier} {case} {extra}.
+--time-total '{"congested": 7200}' gives each case of that tier total x nets(case) / sum of
+nets over the tier's selected cases (rounded to 0.1 s); --dry-run prints limits and commands.
 Writes research/runs/<label>/seed<N>/<tier>/<case>.sol.json, a runtime.json per tier
 ({case: wall seconds}), stats.jsonl (the router's last stdout line, if it is JSON) and
 research/runs/<label>/run_info.json (command, git sha, machine, budgets).
@@ -26,7 +28,9 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from common import REPO, RUNS, instance_path, select_cases
+import pandas as pd
+
+from common import REPO, RUNS, instance_path, load_json, select_cases
 
 
 def machine():
@@ -90,22 +94,34 @@ def main():
     ap.add_argument("--seeds", type=int, nargs="+", default=[1])
     ap.add_argument("--time-limit", type=float, default=30.0, help="seconds per case")
     ap.add_argument("--time-limits", default="{}", help='per-tier override, e.g. {"stress": 1800}')
+    ap.add_argument("--time-total", default="{}",
+                    help='per-tier total seconds split over the tier\'s cases in proportion to '
+                         'their net count, e.g. {"congested": 7200}; overrides the limits above')
     ap.add_argument("--threads", type=int, default=1, help="threads the router may use per case")
     ap.add_argument("--jobs", type=int, default=1, help="cases run concurrently")
     ap.add_argument("--extra", default="", help="extra router flags (the candidate's switch)")
+    ap.add_argument("--dry-run", action="store_true", help="print each case's limit and command; run nothing")
     args = ap.parse_args()
 
     per_tier = json.loads(args.time_limits)
+    totals = json.loads(args.time_total)
     root = os.path.join(RUNS, args.label)
+    case_limits = {}  # (tier, case) -> seconds, for tiers with a total budget
+    for tier, total in totals.items():
+        cases = select_cases(args.cases).get(tier, [])
+        nets = pd.Series({c: len(load_json(instance_path(tier, c))["nets"]) for c in cases})
+        for c, sec in (total * nets / nets.sum()).round(1).items():
+            case_limits[(tier, c)] = float(sec)
     jobs = []
     for seed in args.seeds:
         for tier, cases in select_cases(args.cases).items():
             tdir = os.path.join(root, f"seed{seed}", tier)
-            os.makedirs(tdir, exist_ok=True)
-            tl = float(per_tier.get(tier, args.time_limit))
+            if not args.dry_run:
+                os.makedirs(tdir, exist_ok=True)
             for case in cases:
+                tl = case_limits.get((tier, case), float(per_tier.get(tier, args.time_limit)))
                 out = os.path.join(tdir, f"{case}.sol.json")
-                if os.path.exists(out):
+                if os.path.exists(out) and not args.dry_run:
                     os.remove(out)
                 cmd = args.cmd.format(instance=instance_path(tier, case), out=out, time=tl,
                                       seed=seed, threads=args.threads, tier=tier, case=case,
@@ -113,8 +129,15 @@ def main():
                 jobs.append(dict(seed=seed, tier=tier, case=case, out=out, cmd=cmd,
                                  time_limit=tl, hard_timeout=1.5 * tl + 60))
 
+    if args.dry_run:
+        for j in jobs:
+            print(f"{j['tier']}/{j['case']} seed{j['seed']}: {j['time_limit']:.1f} s  {j['cmd']}")
+        print(f"total {sum(j['time_limit'] for j in jobs):.1f} s over {len(jobs)} runs")
+        return
+
     info = dict(label=args.label, cmd=args.cmd, extra=args.extra, cases=args.cases,
                 seeds=args.seeds, time_limit=args.time_limit, time_limits=per_tier,
+                time_total=totals, case_time_limits={f"{t}/{c}": v for (t, c), v in case_limits.items()},
                 threads=args.threads, jobs=args.jobs, git_sha=git_sha(), machine=machine(),
                 started=datetime.datetime.now().isoformat(timespec="seconds"))
     os.makedirs(root, exist_ok=True)
