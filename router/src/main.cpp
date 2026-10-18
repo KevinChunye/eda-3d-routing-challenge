@@ -169,6 +169,10 @@ class Router {
     // Deadline guard (huge grids): do not start a move unless deadline_guard x the running
     // average move time still fits before the deadline (0 = off: start moves until the deadline).
     deadline_guard_ = opt.get("deadline_guard", 0.0);
+    // Exact-reroute sweeps after legality stop once fewer than refine_stop x nets improve in a
+    // sweep (0 = only when none improves). On huge grids late sweeps improve a handful of nets
+    // per 20 s and would take the whole search budget.
+    refine_stop_ = opt.get("refine_stop", 0.0);
     if (neg_int_ > 0) nbuck_.resize(1 << 16);
     gneg_mult_ = opt.get("gneg_mult", 2.0);
     gneg_hist_ = opt.get("gneg_hist", 0.5);
@@ -381,6 +385,7 @@ class Router {
       snapshot("refine", 0);
       if (verbose_) std::cerr << "sweep " << sweeps_ << " improved " << improved << " total " << total_ << "\n";
       if (stop || improved == 0) break;
+      if (refine_stop_ > 0 && improved < refine_stop_ * nn) break;
     }
   }
 
@@ -1053,7 +1058,7 @@ class Router {
   double sel_floor_;
   int minld_ = 1;
   double neg_int_ = 0.0, neg_goal_ = 0.0;
-  double ej_p_ = 0.0, deadline_guard_ = 0.0, move_ema_us_ = 0.0;
+  double ej_p_ = 0.0, deadline_guard_ = 0.0, move_ema_us_ = 0.0, refine_stop_ = 0.0;
   int ej_pen_ = 8, ej_cap_ = 20, ej_steps_ = 4;
   uint32_t ej_epoch_ = 0;
   std::vector<uint32_t> ej_mark_;
