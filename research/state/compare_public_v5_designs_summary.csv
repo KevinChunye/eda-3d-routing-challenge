@@ -1,0 +1,14 @@
+tier,entry,cases,legal,delay,runtime,derived,aggregate
+designs,coordinated_refinement,3,3,204497.0,,True,1.4673110927631885
+designs,leonid-popryho,3,3,204581.0,,False,1.466734389631467
+designs,cuda-have-been-shorter,3,3,204963.0,,False,1.4633748569258802
+designs,pathfinder_lns,3,3,209175.0,47267.608,False,1.4353558348777067
+designs,spt_lns,3,3,209415.0,,False,1.4347143221556025
+designs,warm_lns_refinement,3,3,209509.0,3615.0,True,1.4331375094374492
+designs,Jiangbanya,3,3,209767.0,10797.133,False,1.4330550122766383
+designs,iamparv7043,3,3,226581.0,1309.3,False,1.3276037523428028
+designs,lns_negotiated,3,3,240751.0,,False,1.2532818730238093
+designs,anvesh,3,3,240501.0,,False,1.2520492139051842
+designs,negotiated_delay,3,3,252901.0,636.11,False,1.1947371508803262
+designs,synapse-surge,3,3,264847.0,,False,1.1455537220169347
+designs,shivaahir158,3,3,288347.0,3728.3909999999996,False,1.0592950014623597
