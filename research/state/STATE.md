@@ -13,7 +13,9 @@ between sessions on possibly different machines.
    28,800 s split by net count, par_sync_frac 0.2, router 94e4fbc, label
    `submit-v5-congested-20261019` (`/tmp/claude-0/run046.sh`). After a container restart:
    rebuild the router at that commit and rerun the same run_router command with `--resume`
-   (finished cases and their measured times are kept). Then score, package
+   (finished cases and their measured times are kept; used once: container restart 21:46 UTC
+   2026-10-19 during case_03, case_01/02 kept, `/tmp/claude-0/run046_resume.sh`). Designs done:
+   1.4331 (exp-045). Then score, package
    (`package_submission.py --tier-runs`, congested with `--time-policy`), model card.
 3. Next research: exp-039 (S3 ejection chains), then E1 merge. Targets still open: congested
    > 1.3111 and designs > 1.4354 for #1 among runtime-reporting entries; intro > 1.1514.
