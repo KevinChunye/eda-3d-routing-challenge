@@ -13,7 +13,8 @@ Placeholders in --cmd: {instance} {out} {time} {seed} {threads} {tier} {case} {e
 nets over the tier's selected cases (rounded to 0.1 s); --dry-run prints limits and commands.
 Writes research/runs/<label>/seed<N>/<tier>/<case>.sol.json, a runtime.json per tier
 ({case: wall seconds}), stats.jsonl (the router's last stdout line, if it is JSON) and
-research/runs/<label>/run_info.json (command, git sha, machine, budgets).
+research/runs/<label>/run_info.json (command, git sha, machine, budgets). runtime.json and
+stats.jsonl are rewritten after every case, so after a restart --resume runs only the rest.
 
 --jobs > 1 runs cases concurrently: fine for experiments, but the submission run must use
 --jobs 1 on an otherwise idle machine so each case's wall clock is clean.
@@ -101,6 +102,8 @@ def main():
     ap.add_argument("--jobs", type=int, default=1, help="cases run concurrently")
     ap.add_argument("--extra", default="", help="extra router flags (the candidate's switch)")
     ap.add_argument("--dry-run", action="store_true", help="print each case's limit and command; run nothing")
+    ap.add_argument("--resume", action="store_true",
+                    help="keep cases this label already finished (stats.jsonl ok + route file) and run the rest")
     args = ap.parse_args()
 
     per_tier = json.loads(args.time_limits)
@@ -112,15 +115,27 @@ def main():
         nets = pd.Series({c: len(load_json(instance_path(tier, c))["nets"]) for c in cases})
         for c, sec in (total * nets / nets.sum()).round(1).items():
             case_limits[(tier, c)] = float(sec)
-    jobs = []
+    jobs, kept = [], []
     for seed in args.seeds:
         for tier, cases in select_cases(args.cases).items():
             tdir = os.path.join(root, f"seed{seed}", tier)
             if not args.dry_run:
                 os.makedirs(tdir, exist_ok=True)
+            done = {}
+            if args.resume and os.path.exists(os.path.join(tdir, "stats.jsonl")):
+                for line in open(os.path.join(tdir, "stats.jsonl")):
+                    row = json.loads(line)
+                    if row["ok"] and os.path.exists(os.path.join(tdir, f"{row['case']}.sol.json")):
+                        done[row["case"]] = row
             for case in cases:
                 tl = case_limits.get((tier, case), float(per_tier.get(tier, args.time_limit)))
                 out = os.path.join(tdir, f"{case}.sol.json")
+                if case in done:
+                    row = done[case]
+                    kept.append(dict(seed=seed, tier=tier, case=case, out=out, secs=row["secs"], rc=row["rc"],
+                                     ok=True, stats=row["stats"]))
+                    print(f"resume: keeping {tier}/{case} ({row['secs']:.1f} s)", flush=True)
+                    continue
                 if os.path.exists(out) and not args.dry_run:
                     os.remove(out)
                 cmd = args.cmd.format(instance=instance_path(tier, case), out=out, time=tl,
@@ -141,10 +156,33 @@ def main():
                 threads=args.threads, jobs=args.jobs, git_sha=git_sha(), machine=machine(),
                 started=datetime.datetime.now().isoformat(timespec="seconds"))
     os.makedirs(root, exist_ok=True)
-    with open(os.path.join(root, "run_info.json"), "w") as fh:
+    info_path = os.path.join(root, "run_info.json")
+    if args.resume and os.path.exists(info_path):
+        first = load_json(info_path)
+        first["resumed"] = first.get("resumed", []) + [dict(started=info["started"], kept=[f"{k['tier']}/{k['case']}" for k in kept])]
+        info = first
+    with open(info_path, "w") as fh:
         json.dump(info, fh, indent=1)
 
-    results = []
+    results = list(kept)
+
+    def write_tier_files():
+        """Rewrite runtime.json and stats.jsonl of every tier from all results so far, so a
+        restart keeps the cases already finished (their measured times unchanged)."""
+        by_dir = {}
+        for r in results:
+            key = os.path.dirname(r["out"])
+            if key not in by_dir:
+                by_dir[key] = []
+            by_dir[key].append(r)
+        for tdir, rs in by_dir.items():
+            with open(os.path.join(tdir, "runtime.json"), "w") as fh:
+                json.dump({r["case"]: round(r["secs"], 3) for r in rs if r["ok"]}, fh, indent=1)
+            with open(os.path.join(tdir, "stats.jsonl"), "w") as fh:
+                for r in rs:
+                    fh.write(json.dumps(dict(case=r["case"], secs=round(r["secs"], 3), rc=r["rc"],
+                                             ok=r["ok"], stats=r["stats"])) + "\n")
+
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         for r in pool.map(run_one, jobs):
             results.append(r)
@@ -152,20 +190,8 @@ def main():
             print(f"seed{r['seed']} {r['tier']}/{r['case']}: {r['secs']:.1f}s {flag}", flush=True)
             if not r["ok"]:
                 print(r["stderr_tail"][-500:], flush=True)
-
-    by_dir = {}
-    for r in results:
-        key = os.path.dirname(r["out"])
-        if key not in by_dir:
-            by_dir[key] = []
-        by_dir[key].append(r)
-    for tdir, rs in by_dir.items():
-        with open(os.path.join(tdir, "runtime.json"), "w") as fh:
-            json.dump({r["case"]: round(r["secs"], 3) for r in rs if r["ok"]}, fh, indent=1)
-        with open(os.path.join(tdir, "stats.jsonl"), "w") as fh:
-            for r in rs:
-                fh.write(json.dumps(dict(case=r["case"], secs=round(r["secs"], 3), rc=r["rc"],
-                                         ok=r["ok"], stats=r["stats"])) + "\n")
+            write_tier_files()
+    write_tier_files()
     n_bad = sum(1 for r in results if not r["ok"])
     print(f"\n{len(results) - n_bad}/{len(results)} runs produced a file -> {root}")
     print("next: python research/tools/evaluate.py --run", root)
