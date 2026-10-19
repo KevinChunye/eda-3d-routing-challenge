@@ -421,3 +421,20 @@ Designs sync (exp-044, 4 threads, 1,800 s, seed 1, S1): par_sync 600 vs 10 (the 
 ctrl 49,880 vs 50,084 (+0.41%), int2float +0.51%. With S1 and the low threshold, longer
 independent walks pay on designs. Timed designs run at 3,600 s/case with S1 + par_sync 600
 registered as exp-045 (not run; needs Kevin's OK).
+
+## 2026-10-19 — best config per tier, and what more time buys (from existing runs)
+
+Gain from more time, same config, 4 threads unless stated (r = 100 × log(short / long delay)):
+
+| tier, config | case | short → long | r | r per doubling |
+|---|---|---|---:|---:|
+| hard, v4 | case_01 / 05 / 09 | 300 → 600 s | +0.92 / +0.76 / +0.01% | +0.56% (mean) |
+| congested, v4 | case_01 | 300 → 1,800 s | +1.31% | +0.51% |
+| designs, v3 search | ctrl | 300 → 1,800 s | +0.84% | +0.32% |
+| designs, v3 search, 1 thread | ctrl | 300 → 1,800 s | +1.87% | +0.72% |
+
+About +0.3–0.6% per doubling, falling with size of the remaining gap (hard case_09 is flat).
+There is nothing to train: the router is a search; "fine-tuning" here means choosing the
+schedule (threshold, sync) at the budget it will run with (short-budget tuning picks the
+wrong winners, exp-027..030) and buying time. Warm starts from saved routes are excluded
+(CLAUDE.md rule 3).
