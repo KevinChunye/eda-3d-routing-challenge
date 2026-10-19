@@ -209,6 +209,9 @@ class Router {
     // Idea 5: with --threads T > 1, T LNS workers run from the same solution and every
     // par_sync seconds all adopt the best one.
     par_sync_ = opt.get("par_sync", 2.0);
+    // par_sync_frac > 0: sync every par_sync_frac x the run's time limit instead (one setting
+    // for cases with different limits; exp-033/034: a fifth to a half of the run works).
+    par_sync_frac_ = opt.get("par_sync_frac", 0.0);
     par_merge_ = static_cast<int>(opt.get_int("par_merge", 0));
     // P3: operator selection fix. The roulette weights (delay gained per microsecond, ~1e-5)
     // sat at the absolute floor 1e-4, so the choice was 50/50. With sel_fix=1 the floor is
@@ -928,7 +931,9 @@ class Router {
   void quiet() { snap_dir_.clear(); verbose_ = 0; trace_s_ = 0.0; move_log_ = nullptr; }
   void add_moves(long long m) { moves_ += m; }
   bool lns_enabled() const { return lns_ != 0; }
-  double par_sync() const { return par_sync_; }
+  double par_sync() const {
+    return par_sync_frac_ > 0 ? par_sync_frac_ * std::chrono::duration<double>(deadline_ - start_).count() : par_sync_;
+  }
   Clock::time_point deadline() const { return deadline_; }
 
   // PathFinder among the (ripped) group with every other net fixed. Returns true if the
@@ -1058,7 +1063,7 @@ class Router {
   double sel_floor_;
   int minld_ = 1;
   double neg_int_ = 0.0, neg_goal_ = 0.0;
-  double ej_p_ = 0.0, deadline_guard_ = 0.0, move_ema_us_ = 0.0, refine_stop_ = 0.0;
+  double ej_p_ = 0.0, deadline_guard_ = 0.0, move_ema_us_ = 0.0, refine_stop_ = 0.0, par_sync_frac_ = 0.0;
   int ej_pen_ = 8, ej_cap_ = 20, ej_steps_ = 4;
   uint32_t ej_epoch_ = 0;
   std::vector<uint32_t> ej_mark_;
