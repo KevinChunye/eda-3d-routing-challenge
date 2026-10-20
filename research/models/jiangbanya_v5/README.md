@@ -41,8 +41,28 @@ uninterrupted run of that case.
 - More time: about +0.3–0.6% per doubling (findings 2026-10-19); designs 1,800 → 3,600 s with
   the same settings: ctrl +0.46%, int2float +0.26%.
 
+## Pictures
+
+- `standings_v5.png`: per tier, Jiangbanya v5 (blue) among the entries that report runtime,
+  with the best entry overall (any runtime) dashed.
+- `progress_v1_v5.png`: hard, congested and designs aggregate from v1 to v5 against the best
+  other entry that reports runtime.
+- `run_congested_case01.gif` (last frame `run_congested_case01_final.png`): one 300 s
+  demonstration run of the congested flags on case_01 (`--set snap_dir=D --set snap_neg=4
+  --set snap_s=6`, every 2nd snapshot): negotiation until no grid point is shared (red rings),
+  then exact reroutes, then the neighborhood search. It ends at 54,553 (score 1.302); the
+  timed run, 4,838 s on the same case, ends at 53,319 (1.333); best public entry 52,233.
+- `layers_congested_case04.gif`: the submitted congested case_04 routing (176,437), one
+  layer per frame.
+- Made with `research/tools/plot_standings.py --out research/models/jiangbanya_v5` and
+  `research/tools/animate_run.py ... --stride 2 --width 960`; `python3 -m m3d.cli animate
+  --mode layers` for the layers GIF.
+
 ## Files
 
+- `submission_all.tar.gz`: all six tiers in one archive, `submissions/<tier>/Jiangbanya/` for
+  hard (v4, router `457c4df`), congested and designs (this folder), intro, scale and stress
+  (`../jiangbanya_v5_sparse/`). Extract from the repo root on the submission branch.
 - `submission_designs.tar.gz`, `submission_congested.tar.gz`: `submissions/<tier>/Jiangbanya/`
   with the route files, the unchanged `runtime.json` of the timed run and `meta.json`.
   Extract from the repo root on the submission branch.

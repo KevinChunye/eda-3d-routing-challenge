@@ -26,9 +26,10 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from matplotlib.collections import LineCollection  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
+from PIL import Image  # noqa: E402
 
 from common import STATE, instance_path  # noqa: E402
-from m3d.anim import _fig_to_pil, _save_gif  # noqa: E402
+from m3d.anim import _fig_to_pil  # noqa: E402
 from m3d.checker import check  # noqa: E402
 from m3d.model import Instance, Submission  # noqa: E402
 
@@ -50,6 +51,23 @@ PHASE_TEXT = {
     "search": "3  neighborhood search (rip up groups of nets, reroute together)",
     "final": "final routing",
 }
+
+
+def save_gif(images, durations, out):
+    """One 128-color palette for all frames (from the first and last frame side by side, so the
+    red conflict rings and the final colors are both in it, plus a solid swatch of every chart
+    color so close hues such as orange and red keep their own entries): unchanged areas then
+    encode as no change between frames, which keeps a long run's GIF small."""
+    w, h = images[0].size
+    colors = [SURFACE, INK, INK2, MUTED, GRID, CRITICAL] + [c for _, _, c in LAYER_CLASS]
+    both = Image.new("RGB", (2 * w, h + 40 * len(colors)))
+    both.paste(images[0], (0, 0))
+    both.paste(images[-1], (w, 0))
+    for i, c in enumerate(colors):
+        both.paste(c, (0, h + 40 * i, 2 * w, h + 40 * (i + 1)))
+    pal = both.quantize(colors=128, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+    frames = [im.quantize(palette=pal, dither=Image.Dither.NONE) for im in images]
+    frames[0].save(out, save_all=True, append_images=frames[1:], duration=durations, loop=0, optimize=True)
 
 
 def score_snapshots(run_dir, inst):
@@ -127,6 +145,7 @@ def main():
     ap.add_argument("--case", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--width", type=int, default=1100)
+    ap.add_argument("--stride", type=int, default=1, help="keep every n-th snapshot (plus first legal and last)")
     args = ap.parse_args()
 
     inst = Instance.load(instance_path(args.tier, args.case))
@@ -136,6 +155,9 @@ def main():
             ("lower bound", rp["lb_best"]), ("congestion-free ideal", rp["lb_free"])]
     frames = score_snapshots(args.dir, inst)
     frames.drop(columns="sub").to_csv(os.path.join(args.dir, "frames.csv"), index=False)
+    first_legal = int(frames["legal"].to_numpy().argmax())
+    keep = (frames.index % args.stride == 0) | (frames.index == first_legal) | (frames.index == len(frames) - 1)
+    frames = frames[keep].reset_index(drop=True)
 
     images, durations = [], []
     for k, fr in enumerate(frames.itertuples()):
@@ -147,7 +169,7 @@ def main():
         score = rp["baseline"] / fr.delay
         status = (f"legal · delay {fr.delay:,} (checker) · score {score:.3f}" if fr.legal
                   else f"ILLEGAL · {len(fr.conflicts)} shared grid points · router's own delay {fr.delay:,}")
-        fig.text(0.03, 0.95, f"hard/{args.case}  ({inst.width}×{inst.height}×{inst.layers} grid, "
+        fig.text(0.03, 0.95, f"{args.tier}/{args.case}  ({inst.width}×{inst.height}×{inst.layers} grid, "
                  f"{len(inst.nets)} nets) · t = {fr.t:5.2f} s", fontsize=12, color=INK, weight="bold")
         fig.text(0.03, 0.905, PHASE_TEXT[fr.phase], fontsize=10.5, color=INK2)
         fig.text(0.53, 0.905, status, fontsize=10.5, color=CRITICAL if not fr.legal else INK)
@@ -160,7 +182,7 @@ def main():
         images.append(_fig_to_pil(fig, args.width))
         plt.close(fig)
         durations.append(2600 if k == len(frames) - 1 else (650 if fr.phase in ("legal", "refine") else 380))
-    _save_gif(images, durations, args.out)
+    save_gif(images, durations, args.out)
     images[-1].save(os.path.splitext(args.out)[0] + "_final.png")
     print(f"wrote {args.out} ({len(images)} frames)")
 
