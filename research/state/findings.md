@@ -473,3 +473,29 @@ sampled CPU time (50–70 s per run); raw profiles in `research/models/jiangbany
   `+0.5` cast would remove it). Together about 15% of CPU on the S1 tiers; per the time-scaling
   memo (+0.3–0.6% per doubling), a 15% speed-up is worth roughly +0.1% there.
 - Move bookkeeping (per-move excess scan, bandit sampling, best-solution copies) is under 1%.
+
+## 2026-10-20 — maintainer batch merge (upstream PR 67) and new judging rules: v5 is #4 independent everywhere
+
+Upstream PR 67 ("Merge pending leaderboard submissions", cut ~20 h before the v5 push) merges ten
+pending submission PRs, ours at v3 (2b0b462: hard, congested, designs). Its commit 8036968 adds
+judging rules: untimed entries unranked (ENFORCE_RUNTIME), identical route files rejected as copies
+(`scripts/check_copies.py`, cases under 10 nets exempt), and winners must be independent, ranked and
+reproduced by the maintainers (top three independent entries per tier re-run before naming winners).
+Several top entries now report runtime. Simulation on a throwaway clone: PR 67 head merged with our
+v5 head (6d350cb) conflicts only in LEADERBOARD.md / README.md (regenerated); check_copies, meta,
+verify (850 files legal), leaderboard --check and the 76 unit tests pass.
+
+| tier | v5 | rank (ranked entries) | #3 independent entry | gap to #3 | its runtime vs ours |
+|---|---:|---:|---|---:|---|
+| hard | 1.3786 | 4 | cuda-have-been-shorter 1.3911 | 0.9% | 127,377 vs 5,391 s |
+| congested | 1.3189 | 4 | cuda-have-been-shorter 1.3301 | 0.8% | 60,566 vs 28,796 s |
+| designs | 1.4331 | 5 (4 independent) | cuda-have-been-shorter 1.4474 | 1.0% | 56,275 vs 10,797 s |
+| intro | 1.1406 | 4 | pathfinder_lns 1.1537 | 1.1% | 22,803 vs 1,122 s |
+| scale | 1.1152 | 5 (4 independent) | pathfinder_lns 1.1321 | 1.5% | 19,203 vs 2,393 s |
+| stress | 1.0798 | 5 (4 independent) | pathfinder_lns 1.0919 | 1.1% | 7,354 vs 2,399 s |
+
+Top three independent on every tier: leonid-popryho, pathfinder_lns, cuda-have-been-shorter.
+Jiangbanya is on the Pareto frontier (runtime vs delay) on intro, hard and scale. The earlier
+"#1 among entries reporting runtime" standings (2026-10-08 board) no longer hold once PR 67 merges.
+Reproduction risk: our routes come from 4-thread, wall-clock-synced runs, so a re-run gives
+different (similar-scoring) routes, not identical ones.

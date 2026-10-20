@@ -12,7 +12,10 @@ between sessions on possibly different machines.
    Prepared 2026-10-20: all six tiers in `jiangbanya_v5/submission_all.tar.gz` (tested on a fresh
    clone of `submit_jiangbanya_20261016`: meta ok, 658 files legal, leaderboard current, only
    allowed paths change); PR #63 text in `jiangbanya_v5/pr_63_v5.md`; pictures in the same folder.
-   Kevin pushed it 2026-10-20: PR #63 head is `6d350cb` (six tiers). Model card rewritten with
+   Kevin pushed it 2026-10-20: PR #63 head is `6d350cb` (six tiers). The maintainer's batch PR 67
+   still holds v3; under its new rules v5 is #4 among independent ranked entries on every tier
+   (findings 2026-10-20). Commit messages here must not contain `#<number>` (GitHub links them to
+   upstream PRs). Model card rewritten with
    explanatory figures; `router/AUDIT.md` is the code-audit guide (CPU profile per tier).
 3. Next research: exp-039 (S3 ejection chains), then E1 merge. Targets still open: congested
    > 1.3111 and designs > 1.4354 for #1 among runtime-reporting entries; intro > 1.1514.
