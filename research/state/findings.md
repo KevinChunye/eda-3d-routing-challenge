@@ -449,3 +449,27 @@ wrong winners, exp-027..030) and buying time. Warm starts from saved routes are 
 Time keeps paying on the big cases: congested case_03/04 (291/302 nets, 4.7–4.9× v4's time)
 gained +1.69/+2.09%, case_01/02 +0.37/+0.58%. The container restarted four times during
 congested case_03; per-case checkpoints in run_router.py made the run finishable.
+
+## 2026-10-20 — where the CPU goes at v5 settings (gprof; router/AUDIT.md)
+
+Static `-pg` build of 94e4fbc, 1 thread, 120 s, seed 1, each tier's v5 flags (hard case_05,
+congested case_01, designs ctrl, scale case_01), four runs at once on the 4-vCPU VM. Shares of the
+sampled CPU time (50–70 s per run); raw profiles in `research/models/jiangbanya_v5/profile/`.
+
+| kind of work | hard | congested | designs | scale |
+|---|---:|---:|---:|---:|
+| group repair searches (B3) | 82.9% | 56.1% | 42.6% | 41.1% |
+| initial negotiation searches (A1) | 4.7% | 35.8% | 24.7% | 17.5% |
+| S1 goal bound `hsink()` | — | — | 8.9% | 9.2% |
+| S1 cost rounding (libm `lround`) | — | — | 6.7% | 6.4% |
+| exact searches + tree build | 9.6% | 5.8% | 12.2% | 20.5% |
+| queue pushes | 0.5% | 0.3% | 4.5% | 4.3% |
+| move loop, bandit, threads, other | 2.3% | 2.1% | 0.4% | 1.0% |
+
+- Over 95% is shortest-path search. A1's share is inflated by the 120 s budget (first legal at
+  6–43 s); in the 1–2.5 hour submission runs it is a few percent.
+- Leads, not yet measured as changes: `hsink()` loops over 6 layers per relaxed neighbor (a
+  per-search table would remove it); `std::lround` is a libm call per relaxation (a positive-cost
+  `+0.5` cast would remove it). Together about 15% of CPU on the S1 tiers; per the time-scaling
+  memo (+0.3–0.6% per doubling), a 15% speed-up is worth roughly +0.1% there.
+- Move bookkeeping (per-move excess scan, bandit sampling, best-solution copies) is under 1%.

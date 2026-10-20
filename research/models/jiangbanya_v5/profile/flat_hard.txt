@@ -1,0 +1,89 @@
+# gprof -b -p, static -pg build of router/src/main.cpp at 94e4fbc; 1 thread, 120 s, seed 1, hard settings (see router/AUDIT.md)
+# run: {"legal": true, "delay": 15505, "iterations": 175, "moves": 16510, "moves_per_s": 146.5, "legal_s": 6.341, "secs": 119.007}
+# lns moves 16510 accepted 9991 total 15505 heur 0/0 w 0.01/0.01
+# ARMS ideal 2663 window 4143 wide 2147 ideal+2 1084 random 5726
+# STAT ideal tried 3746 size 6.51 neg_legal 0.913 accepted 0.531 improved 0.1119 gain 3130 us/move 8803
+# STAT window tried 12016 size 6.36 neg_legal 0.959 accepted 0.666 improved 0.1397 gain 11596 us/move 6617
+# STAT kick tried 1 size 12.00 neg_legal 1.000 accepted 0.000 improved 0.0000 gain 0 us/move 7013
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls   s/call   s/call  name    
+ 50.45     34.70    34.70   262780     0.00     0.00  bool Router::route_neg<true>(int, double)
+ 26.98     53.26    18.56 1946786950     0.00     0.00  Router::route_neg<true>(int, double)::{lambda(int, int)#1}::operator()(int, int) const
+  8.40     59.04     5.78   101217     0.00     0.00  bool Router::route_exact<false>(int)
+  3.04     61.13     2.09    87602     0.00     0.00  bool Router::route_neg_astar<true>(int, double)
+  2.78     63.04     1.91     7322     0.00     0.00  bool Router::route_neg<false>(int, double)
+  2.46     64.73     1.69 122673532     0.00     0.00  Router::route_neg_astar<true>(int, double)::{lambda(int, int)#3}::operator()(int, int) const
+  1.67     65.88     1.15 528106307     0.00     0.00  std::thread::_State_impl<std::thread::_Invoker<std::tuple<parallel_lns(Router&, int, unsigned long)::{lambda()#1}> > >::~_State_impl()
+  1.21     66.71     0.83 97338296     0.00     0.00  Router::route_neg<false>(int, double)::{lambda(int, int)#2}::operator()(int, int) const
+  0.47     67.03     0.32 132035631     0.00     0.00  std::vector<int, std::allocator<int> >::push_back(int const&)
+  0.42     67.32     0.29   310934     0.00     0.00  Router::build_tree_into(int, std::vector<int, std::allocator<int> >&, std::vector<int, std::allocator<int> >&)
+  0.42     67.61     0.29     3458     0.00     0.00  bool Router::route_neg_astar<false>(int, double)
+  0.38     67.87     0.26 39762408     0.00     0.00  Router::route_exact_astar(int)::{lambda(int, int)#1}::operator()(int, int) const
+  0.32     68.09     0.22    60221     0.00     0.00  Router::build_tree_rand(int)
+  0.31     68.30     0.21 17436360     0.00     0.00  Router::route_neg_astar<false>(int, double)::{lambda(int, int)#1}::operator()(int, int) const
+  0.22     68.45     0.15        1     0.15    65.29  Router::lns_run(std::chrono::time_point<std::chrono::_V2::steady_clock, std::chrono::duration<long, std::ratio<1l, 1000000000l> > >)
+  0.17     68.57     0.12    15763     0.00     0.00  Router::group_negotiate(std::vector<int, std::allocator<int> > const&)
+  0.07     68.62     0.05    40940     0.00     0.00  Router::route_exact_astar(int)
+  0.06     68.66     0.04                             __ieee754_log_fma
+  0.06     68.70     0.04                             __memmove_avx512_unaligned_erms
+  0.03     68.72     0.02                             clock_gettime
+  0.01     68.73     0.01   766531     0.00     0.00  std::mersenne_twister_engine<unsigned long, 64ul, 312ul, 156ul, 31ul, 13043109905998158313ul, 29ul, 6148914691236517205ul, 17ul, 8202884508482404352ul, 37ul, 18444473444759240704ul, 43ul, 6364136223846793005ul>::operator()()
+  0.01     68.74     0.01   593720     0.00     0.00  main::{lambda()#1}::operator()() const
+  0.01     68.75     0.01   242554     0.00     0.00  void std::__introsort_loop<__gnu_cxx::__normal_iterator<Router**, std::vector<Router*, std::allocator<Router*> > >, long, __gnu_cxx::__ops::_Iter_comp_iter<parallel_lns(Router&, int, unsigned long)::{lambda(Router*, Router*)#1}> >(__gnu_cxx::__normal_iterator<Router**, std::vector<Router*, std::allocator<Router*> > >, __gnu_cxx::__normal_iterator<Router**, std::vector<Router*, std::allocator<Router*> > >, long, __gnu_cxx::__ops::_Iter_comp_iter<parallel_lns(Router&, int, unsigned long)::{lambda(Router*, Router*)#1}>)
+  0.01     68.76     0.01        1     0.01     3.32  Router::negotiate()
+  0.01     68.77     0.01                             std::chrono::_V2::steady_clock::now()
+  0.01     68.78     0.01                             write
+  0.00     68.78     0.00    31535     0.00     0.00  void std::shuffle<__gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, std::mersenne_twister_engine<unsigned long, 64ul, 312ul, 156ul, 31ul, 13043109905998158313ul, 29ul, 6148914691236517205ul, 17ul, 8202884508482404352ul, 37ul, 18444473444759240704ul, 43ul, 6364136223846793005ul>&>(__gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, std::mersenne_twister_engine<unsigned long, 64ul, 312ul, 156ul, 31ul, 13043109905998158313ul, 29ul, 6148914691236517205ul, 17ul, 8202884508482404352ul, 37ul, 18444473444759240704ul, 43ul, 6364136223846793005ul>&)
+  0.00     68.78     0.00    15764     0.00     0.00  std::vector<char, std::allocator<char> >::_M_fill_assign(unsigned long, char const&)
+  0.00     68.78     0.00    11194     0.00     0.00  mj::Parser::ws()
+  0.00     68.78     0.00     7675     0.00     0.00  mj::Value::~Value()
+  0.00     68.78     0.00     3748     0.00     0.00  std::mersenne_twister_engine<unsigned long, 64ul, 312ul, 156ul, 31ul, 13043109905998158313ul, 29ul, 6148914691236517205ul, 17ul, 8202884508482404352ul, 37ul, 18444473444759240704ul, 43ul, 6364136223846793005ul>::_M_gen_rand()
+  0.00     68.78     0.00     3230     0.00     0.00  std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_dispose()
+  0.00     68.78     0.00     3087     0.00     0.00  mj::Parser::string_lit[abi:cxx11]()
+  0.00     68.78     0.00     1506     0.00     0.00  std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::basic_string<std::allocator<char> >(char const*, std::allocator<char> const&) [clone .constprop.0]
+  0.00     68.78     0.00     1394     0.00     0.00  mj::Value::at(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) const
+  0.00     68.78     0.00      166     0.00     0.00  std::vector<int, std::allocator<int> >::vector(std::vector<int, std::allocator<int> > const&)
+  0.00     68.78     0.00       83     0.00     0.00  std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_mutate(unsigned long, unsigned long, char const*, unsigned long)
+  0.00     68.78     0.00       67     0.00     0.00  std::_Rb_tree<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::_Select1st<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > >::find(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+  0.00     68.78     0.00       32     0.00     0.00  Options::get(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, double)
+  0.00     68.78     0.00       32     0.00     0.00  Options::get_int(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, long long)
+  0.00     68.78     0.00       32     0.00     0.00  std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::substr(unsigned long, unsigned long) const
+  0.00     68.78     0.00       25     0.00     0.00  std::vector<int, std::allocator<int> >::~vector()
+  0.00     68.78     0.00       16     0.00     0.00  std::map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > >::operator[](std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >&&)
+  0.00     68.78     0.00       14     0.00     0.00  std::vector<std::vector<int, std::allocator<int> >, std::allocator<std::vector<int, std::allocator<int> > > >::~vector()
+  0.00     68.78     0.00       14     0.00     0.00  std::_Rb_tree<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::_Select1st<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > >::_M_get_insert_hint_unique_pos(std::_Rb_tree_const_iterator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+  0.00     68.78     0.00       11     0.00     0.00  mj::Parser::value()
+  0.00     68.78     0.00       10     0.00     0.00  Router::snapshot(char const*, long long)
+  0.00     68.78     0.00        9     0.00     0.00  std::vector<unsigned int, std::allocator<unsigned int> >::_M_fill_assign(unsigned long, unsigned int const&)
+  0.00     68.78     0.00        9     0.00     0.00  int* std::__move_merge<__gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, int*, __gnu_cxx::__ops::_Iter_comp_iter<Router::negotiate()::{lambda(int, int)#1}> >(__gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, int*, __gnu_cxx::__ops::_Iter_comp_iter<Router::negotiate()::{lambda(int, int)#1}>)
+  0.00     68.78     0.00        8     0.00     0.00  std::vector<int, std::allocator<int> >::_M_fill_assign(unsigned long, int const&)
+  0.00     68.78     0.00        8     0.00     0.00  std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::reserve(unsigned long)
+  0.00     68.78     0.00        7     0.00     0.00  std::vector<std::vector<int, std::allocator<int> >, std::allocator<std::vector<int, std::allocator<int> > > >::_M_default_append(unsigned long)
+  0.00     68.78     0.00        7     0.00     0.00  std::vector<std::vector<int, std::allocator<int> >, std::allocator<std::vector<int, std::allocator<int> > > >::resize(unsigned long)
+  0.00     68.78     0.00        6     0.00     0.00  __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > > std::__move_merge<int*, __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, __gnu_cxx::__ops::_Iter_comp_iter<Router::negotiate()::{lambda(int, int)#1}> >(int*, int*, int*, int*, __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, __gnu_cxx::__ops::_Iter_comp_iter<Router::negotiate()::{lambda(int, int)#1}>)
+  0.00     68.78     0.00        4     0.00     0.00  double __gnu_cxx::__stoa<double, double, char>(double (*)(char const*, char**), char const*, char const*, unsigned long*)
+  0.00     68.78     0.00        3     0.00     0.00  std::vector<short, std::allocator<short> >::_M_default_append(unsigned long)
+  0.00     68.78     0.00        3     0.00     0.00  std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::append(char const*)
+  0.00     68.78     0.00        2     0.00     0.00  std::vector<double, std::allocator<double> >::_M_fill_assign(unsigned long, double const&)
+  0.00     68.78     0.00        2     0.00     0.00  std::vector<double, std::allocator<double> >::_M_default_append(unsigned long)
+  0.00     68.78     0.00        2     0.00     0.00  void std::__merge_sort_with_buffer<__gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, int*, __gnu_cxx::__ops::_Iter_comp_iter<Router::negotiate()::{lambda(int, int)#1}> >(__gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, int*, __gnu_cxx::__ops::_Iter_comp_iter<Router::negotiate()::{lambda(int, int)#1}>)
+  0.00     68.78     0.00        1     0.00     0.00  Router::lns_finish()
+  0.00     68.78     0.00        1     0.00     0.05  Router::refine()
+  0.00     68.78     0.00        1     0.00     0.00  Router::lns_setup()
+  0.00     68.78     0.00        1     0.00     0.00  Router::Router(Instance const&, Options&, unsigned long, std::chrono::time_point<std::chrono::_V2::steady_clock, std::chrono::duration<long, std::ratio<1l, 1000000000l> > >, std::chrono::time_point<std::chrono::_V2::steady_clock, std::chrono::duration<long, std::ratio<1l, 1000000000l> > >)
+  0.00     68.78     0.00        1     0.00     0.00  Router::~Router()
+  0.00     68.78     0.00        1     0.00     0.00  Options::~Options()
+  0.00     68.78     0.00        1     0.00     0.00  Instance::~Instance()
+  0.00     68.78     0.00        1     0.00     0.00  Router::write(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) const
+  0.00     68.78     0.00        1     0.00     0.00  Options::check_unused() const
+  0.00     68.78     0.00        1     0.00     0.00  std::vector<long long, std::allocator<long long> >::_M_fill_assign(unsigned long, long long const&)
+  0.00     68.78     0.00        1     0.00     0.00  std::vector<long long, std::allocator<long long> >::_M_default_append(unsigned long)
+  0.00     68.78     0.00        1     0.00     0.00  std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_assign(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+  0.00     68.78     0.00        1     0.00     0.00  std::_Rb_tree<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::_Select1st<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > >, std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, std::allocator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > > > >::_M_get_insert_unique_pos(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+  0.00     68.78     0.00        1     0.00     0.00  void std::__merge_adaptive<__gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, long, int*, __gnu_cxx::__ops::_Iter_comp_iter<Router::negotiate()::{lambda(int, int)#1}> >(__gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, long, long, int*, __gnu_cxx::__ops::_Iter_comp_iter<Router::negotiate()::{lambda(int, int)#1}>)
+  0.00     68.78     0.00        1     0.00     0.00  std::pair<int*, long> std::get_temporary_buffer<int>(long)
+  0.00     68.78     0.00        1     0.00     0.00  void std::__stable_sort_adaptive<__gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, int*, __gnu_cxx::__ops::_Iter_comp_iter<Router::negotiate()::{lambda(int, int)#1}> >(__gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, __gnu_cxx::__normal_iterator<int*, std::vector<int, std::allocator<int> > >, int*, __gnu_cxx::__ops::_Iter_comp_iter<Router::negotiate()::{lambda(int, int)#1}>)
+  0.00     68.78     0.00        1     0.00    68.66  main
