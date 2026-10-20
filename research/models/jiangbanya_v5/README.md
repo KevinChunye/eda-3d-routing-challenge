@@ -63,6 +63,7 @@ uninterrupted run of that case.
 - `submission_all.tar.gz`: all six tiers in one archive, `submissions/<tier>/Jiangbanya/` for
   hard (v4, router `457c4df`), congested and designs (this folder), intro, scale and stress
   (`../jiangbanya_v5_sparse/`). Extract from the repo root on the submission branch.
+- `pr_63_v5.md`: title (first line) and description for PR #63 with v5 on all six tiers.
 - `submission_designs.tar.gz`, `submission_congested.tar.gz`: `submissions/<tier>/Jiangbanya/`
   with the route files, the unchanged `runtime.json` of the timed run and `meta.json`.
   Extract from the repo root on the submission branch.

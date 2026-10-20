@@ -9,6 +9,9 @@ between sessions on possibly different machines.
    runtime) in `research/models/jiangbanya_v5_sparse/`. Kevin submits both himself.
 2. Done 2026-10-20: v5 long runs in `research/models/jiangbanya_v5/`: designs 1.4331 (#3 among
    runtime-reporting entries), congested 1.3189 (#1 among them, #4 overall). Kevin submits.
+   Prepared 2026-10-20: all six tiers in `jiangbanya_v5/submission_all.tar.gz` (tested on a fresh
+   clone of `submit_jiangbanya_20261016`: meta ok, 658 files legal, leaderboard current, only
+   allowed paths change); PR #63 text in `jiangbanya_v5/pr_63_v5.md`; pictures in the same folder.
 3. Next research: exp-039 (S3 ejection chains), then E1 merge. Targets still open: congested
    > 1.3111 and designs > 1.4354 for #1 among runtime-reporting entries; intro > 1.1514.
 
