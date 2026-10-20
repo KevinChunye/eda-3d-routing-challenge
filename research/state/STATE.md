@@ -14,8 +14,9 @@ between sessions on possibly different machines.
    `submit-v5-congested-20261019` (`/tmp/claude-0/run046.sh`). After a container restart:
    rebuild the router at that commit and rerun the same run_router command with `--resume`
    (finished cases and their measured times are kept; container restarts 21:46, 23:57 (10-19) and
-   00:18 UTC (10-20), all during case_03 (8,483 s); case_01/02 kept (+0.37%, +0.58% vs v4);
-   decision on shorter limits pending with Kevin,
+   00:18 UTC (10-20), all during case_03 (8,483 s), and again before
+   03:20; Kevin: keep retrying. case_01..03 done (+0.37%, +0.58%, +1.69% vs v4); case_04 from
+   05:42 UTC,
    `/tmp/claude-0/run046_resume.sh`). Designs done:
    1.4331 (exp-045). Then score, package
    (`package_submission.py --tier-runs`, congested with `--time-policy`), model card.
