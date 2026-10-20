@@ -438,3 +438,14 @@ There is nothing to train: the router is a search; "fine-tuning" here means choo
 schedule (threshold, sync) at the budget it will run with (short-budget tuning picks the
 wrong winners, exp-027..030) and buying time. Warm starts from saved routes are excluded
 (CLAUDE.md rule 3).
+
+## 2026-10-20 — long timed runs: congested #1 among runtime-reporting entries (exp-045, exp-046)
+
+| tier | v4 | v5 | r vs v4 | budget | rank (runtime-reporting / full board) |
+|---|---:|---:|---:|---|---|
+| designs | 1.4150 | 1.433055 | +1.27% (3/3) | 3,600 s/case, S1 + par_sync 600 | 3 (0.006% behind warm_lns_refinement) / 7 |
+| congested | 1.3034 | 1.318907 | +1.18% (4/4) | 28,800 s split by net count, par_sync_frac 0.2 | **1** / 4 |
+
+Time keeps paying on the big cases: congested case_03/04 (291/302 nets, 4.7–4.9× v4's time)
+gained +1.69/+2.09%, case_01/02 +0.37/+0.58%. The container restarted four times during
+congested case_03; per-case checkpoints in run_router.py made the run finishable.

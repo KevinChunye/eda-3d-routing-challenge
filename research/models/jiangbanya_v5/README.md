@@ -7,13 +7,21 @@ cloud VM:
 | tier | v4 | **v5** | v5 vs v4 | cases better | total delay | budget | total runtime | legal |
 |---|---:|---:|---:|---:|---:|---|---:|:---:|
 | designs | 1.4150 | **1.4331** | +1.27% | 3/3 | 209,767 | 3,600 s per case | 10,797 s | 3/3 |
-| congested | 1.3034 | CONG_SCORE | CONG_R | CONG_BETTER | CONG_DELAY | 28,800 s split by net count | CONG_RT | CONG_LEGAL |
+| congested | 1.3034 | **1.3189** | +1.18% | 4/4 | 488,315 | 28,800 s split by net count | 28,796 s | 4/4 |
 
 "v5 vs v4" = mean over cases of log(v4 delay / v5 delay).
 
 Standing among entries that report runtime: designs pathfinder_lns 1.435356 (47,268 s),
 warm_lns_refinement 1.433138 (3,615 s, derived), **Jiangbanya 1.433055** → #3, 0.006% behind
-#2 and 0.16% behind #1. CONG_STANDING
+#2 and 0.16% behind #1. Congested: **Jiangbanya 1.318907**, pathfinder_lns 1.311068 (61,369 s),
+warm_lns_refinement 1.308475 (3,621 s, derived) → **#1 among entries reporting runtime**, and
+#4 on the full board (above spt_lns 1.315568). Per case vs v4: +0.37 / +0.58 / +1.69 / +2.09%
+(case_01..04): the bigger cases, with the most room and the most time, gained most.
+
+The congested run was resumed after container restarts (21:46, 23:57, 00:18 and before
+03:20 UTC, all during case_03; `run_router.py --resume` kept finished cases and their
+measured times; `run_info.json` lists the restarts). Every runtime in runtime.json is one
+uninterrupted run of that case.
 
 - designs: router `858a703`, v3 base flags + `--set neg_int=4 --set neg_goal=1.5 --set par_sync=600`,
   `--time-limit 3600` (exp-045). Per case vs v4: ctrl +1.56%, int2float +1.34%, router +0.89%.

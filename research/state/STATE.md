@@ -7,19 +7,8 @@ between sessions on possibly different machines.
 1. Done 2026-10-18: Jiangbanya v4 (hard/congested/designs) in `research/models/jiangbanya_v4/`;
    v5 sparse tiers (intro 1.1406 #2, scale 1.1152 #3, stress 1.0798 #3 among entries reporting
    runtime) in `research/models/jiangbanya_v5_sparse/`. Kevin submits both himself.
-2. In progress (Kevin's go-ahead 2026-10-19), on this cloud VM, one case at a time, 4 threads:
-   exp-045 designs 3,600 s/case, S1 + par_sync 600, router 858a703, label
-   `submit-v5-designs-20261019` (script `/tmp/claude-0/run045.sh`); then exp-046 congested
-   28,800 s split by net count, par_sync_frac 0.2, router 94e4fbc, label
-   `submit-v5-congested-20261019` (`/tmp/claude-0/run046.sh`). After a container restart:
-   rebuild the router at that commit and rerun the same run_router command with `--resume`
-   (finished cases and their measured times are kept; container restarts 21:46, 23:57 (10-19) and
-   00:18 UTC (10-20), all during case_03 (8,483 s), and again before
-   03:20; Kevin: keep retrying. case_01..03 done (+0.37%, +0.58%, +1.69% vs v4); case_04 from
-   05:42 UTC,
-   `/tmp/claude-0/run046_resume.sh`). Designs done:
-   1.4331 (exp-045). Then score, package
-   (`package_submission.py --tier-runs`, congested with `--time-policy`), model card.
+2. Done 2026-10-20: v5 long runs in `research/models/jiangbanya_v5/`: designs 1.4331 (#3 among
+   runtime-reporting entries), congested 1.3189 (#1 among them, #4 overall). Kevin submits.
 3. Next research: exp-039 (S3 ejection chains), then E1 merge. Targets still open: congested
    > 1.3111 and designs > 1.4354 for #1 among runtime-reporting entries; intro > 1.1514.
 
